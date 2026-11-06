@@ -1,0 +1,21 @@
+Order ID,Order Date,Channel,Partner,SKU,Product Name,Quantity,Gross Amount,Discount,Net Amount,Payment Method,Customer City,Customer State,Status
+ORD-AMZ-10001,2024-01-05,Online,Amazon,SKU-ELEC-001,boAt Rockerz 450 Bluetooth Headphones,1,1499.00,150.00,1349.00,Prepaid,Mumbai,Maharashtra,Delivered
+ORD-AMZ-10002,2024-01-08,Online,Amazon,SKU-CLTH-002,Levi's Men's 511 Slim Fit Jeans,1,2799.00,560.00,2239.00,COD,Bengaluru,Karnataka,Delivered
+ORD-FLK-20001,2024-01-10,Online,Flipkart,SKU-ELEC-003,Samsung Galaxy M14 5G (6GB RAM),1,13490.00,1500.00,11990.00,Prepaid,Delhi,Delhi,Delivered
+ORD-AMZ-10003,2024-01-12,Online,Amazon,SKU-HOME-004,Prestige Iris 750W Mixer Grinder,1,3299.00,800.00,2499.00,COD,Hyderabad,Telangana,Delivered
+ORD-FLK-20002,2024-01-15,Online,Flipkart,SKU-CLTH-005,Allen Solly Women's Regular Fit Shirt,2,1599.00,320.00,1279.00,Prepaid,Chennai,Tamil Nadu,Delivered
+ORD-AMZ-10004,2024-01-18,Online,Amazon,SKU-ELEC-006,Fire-Boltt Ninja Call Pro Smartwatch,1,1999.00,400.00,1599.00,Prepaid,Pune,Maharashtra,Returned
+ORD-FLK-20003,2024-01-20,Online,Flipkart,SKU-ELEC-007,Noise ColorFit Pro 4 Alpha,1,2999.00,600.00,2399.00,COD,Jaipur,Rajasthan,Delivered
+ORD-AMZ-10005,2024-01-22,Online,Amazon,SKU-HOME-008,Pigeon by Stovekraft 12739 Handy Chopper,3,899.00,100.00,799.00,COD,Lucknow,Uttar Pradesh,Delivered
+ORD-FLK-20004,2024-01-25,Online,Flipkart,SKU-CLTH-009,Peter England Men's Formal Trousers,1,1899.00,380.00,1519.00,Prepaid,Kolkata,West Bengal,Cancelled
+ORD-AMZ-10006,2024-01-28,Online,Amazon,SKU-ELEC-010,JBL Tune 230NC TWS Earbuds,1,4999.00,1000.00,3999.00,Prepaid,Ahmedabad,Gujarat,Delivered
+ORD-FLK-20005,2024-02-01,Online,Flipkart,SKU-HOME-011,Havells Instanio Prime 3L Instant Water Heater,1,4590.00,460.00,4130.00,COD,Nagpur,Maharashtra,Delivered
+ORD-AMZ-10007,2024-02-05,Online,Amazon,SKU-CLTH-012,US Polo Assn Men's Sneakers,1,2499.00,500.00,1999.00,Prepaid,Indore,Madhya Pradesh,Delivered
+ORD-FLK-20006,2024-02-08,Online,Flipkart,SKU-ELEC-013,Redmi 12 5G (8GB RAM 256GB),1,14999.00,2000.00,12999.00,COD,Coimbatore,Tamil Nadu,Delivered
+ORD-AMZ-10008,2024-02-10,Online,Amazon,SKU-HOME-014,Bajaj Majesty New SWX 4 Sandwich Toaster,1,1799.00,200.00,1599.00,COD,Patna,Bihar,Returned
+ORD-FLK-20007,2024-02-12,Online,Flipkart,SKU-CLTH-015,Roadster Men's Casual Jacket,1,1999.00,400.00,1599.00,Prepaid,Chandigarh,Chandigarh,Delivered
+ORD-AMZ-10009,2024-02-15,Online,Amazon,SKU-ELEC-016,Zebronics Zeb-Thunder Wireless Mouse,2,599.00,60.00,539.00,Prepaid,Bhopal,Madhya Pradesh,Delivered
+ORD-FLK-20008,2024-02-18,Online,Flipkart,SKU-HOME-017,Wipro 9W LED Bulb Pack of 4,1,499.00,50.00,449.00,COD,Surat,Gujarat,Delivered
+ORD-AMZ-10010,2024-02-20,Online,Amazon,SKU-ELEC-018,OnePlus Nord Buds 2r,1,2299.00,230.00,2069.00,Prepaid,Visakhapatnam,Andhra Pradesh,Cancelled
+ORD-FLK-20009,2024-02-25,Online,Flipkart,SKU-CLTH-019,Wrogn Men's Printed T-Shirt,3,799.00,80.00,719.00,Prepaid,Kochi,Kerala,Delivered
+ORD-AMZ-10011,2024-02-28,Online,Amazon,SKU-HOME-020,Milton Thermosteel Flask 1000ml,1,899.00,90.00,809.00,COD,Guwahati,Assam,Delivered

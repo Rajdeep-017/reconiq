@@ -1,0 +1,11 @@
+Return ID,Return Date,Order Reference,Partner,Return Reason,Return Status,Refund Amount,Refund Status,Refund Date
+RET-001,2024-01-25,ORD-AMZ-10004,Amazon,Damaged,Received,1599.00,Processed,2024-02-02
+RET-002,2024-02-15,ORD-AMZ-10008,Amazon,Wrong Item,Received,1599.00,Processed,2024-02-22
+RET-003,2024-02-10,ORD-FLK-20001,Flipkart,Customer Changed Mind,QC Passed,11990.00,Pending,
+RET-004,2024-02-18,ORD-AMZ-10006,Amazon,Size Mismatch,In Transit,3999.00,Pending,
+RET-005,2024-02-20,ORD-FLK-20003,Flipkart,Damaged,Received,2399.00,Failed,2024-03-01
+RET-006,2024-02-25,ORD-AMZ-10002,Amazon,Customer Changed Mind,QC Passed,2239.00,Processed,2024-03-05
+RET-007,2024-03-01,ORD-FLK-20006,Flipkart,Wrong Item,In Transit,12999.00,Pending,
+RET-008,2024-03-05,ORD-AMZ-10005,Amazon,Size Mismatch,Received,799.00,Processed,2024-03-12
+RET-009,2024-03-08,ORD-FLK-20008,Flipkart,Damaged,QC Passed,449.00,Failed,2024-03-15
+RET-010,2024-03-12,ORD-AMZ-10011,Amazon,Customer Changed Mind,In Transit,809.00,Pending,
