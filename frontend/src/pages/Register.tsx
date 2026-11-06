@@ -79,6 +79,7 @@ export function Register() {
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="name@company.com"
                   {...form.register('email')}
                   className={cn(
@@ -111,6 +112,7 @@ export function Register() {
                 <Input
                   id="password"
                   type="password"
+                  autoComplete="new-password"
                   placeholder="••••••••"
                   {...form.register('password')}
                   className={cn(
@@ -125,7 +127,6 @@ export function Register() {
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
                 <Select
-
                   {...form.register('role')}
                   defaultValue="finance_executive"
                 >

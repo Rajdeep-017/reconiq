@@ -77,7 +77,12 @@ class MappingService:
         return {"upload_id": str(upload_id), "mappings": mappings}
 
     def save_mapping(
-        self, upload_id: uuid.UUID, mappings: dict, user_id: uuid.UUID, approved: bool = False
+        self,
+        upload_id: uuid.UUID,
+        mappings: dict,
+        user_id: uuid.UUID,
+        approved: bool = False,
+        org_id: uuid.UUID | None = None,
     ) -> ColumnMapping:
         upload = self.db.query(Upload).filter(Upload.id == upload_id).first()
         if not upload:
@@ -93,6 +98,7 @@ class MappingService:
         version = (latest.version + 1) if latest else 1
 
         mapping = ColumnMapping(
+            org_id=org_id,
             upload_id=upload_id,
             version=version,
             mappings=mappings,

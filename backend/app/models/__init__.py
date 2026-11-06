@@ -1,6 +1,7 @@
 """Model registry — import all models here so Alembic can discover them."""
 
 # Identity
+from app.models.organization import Organization  # noqa: F401
 from app.models.user import User, UserRole  # noqa: F401
 
 # Partners

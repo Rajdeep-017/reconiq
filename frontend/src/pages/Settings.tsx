@@ -21,24 +21,24 @@ export function Settings() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Organization Name</Label>
-              <Input placeholder="My E-commerce Store" defaultValue="ReconIQ Demo Org" />
+              <Label htmlFor="org_name">Organization Name</Label>
+              <Input id="org_name" name="org_name" placeholder="My E-commerce Store" defaultValue="ReconIQ Demo Org" />
             </div>
             <div className="space-y-2">
-              <Label>Organization Slug</Label>
-              <Input placeholder="my-store" defaultValue="reconiq-demo-org" />
+              <Label htmlFor="org_slug">Organization Slug</Label>
+              <Input id="org_slug" name="org_slug" placeholder="my-store" defaultValue="reconiq-demo-org" />
             </div>
             <div className="space-y-2">
-              <Label>Primary Contact Email</Label>
-              <Input type="email" placeholder="admin@company.com" />
+              <Label htmlFor="org_email">Primary Contact Email</Label>
+              <Input id="org_email" name="org_email" type="email" placeholder="admin@company.com" />
             </div>
             <div className="space-y-2">
-              <Label>Time Zone</Label>
-              <Input placeholder="Asia/Kolkata" defaultValue="Asia/Kolkata" />
+              <Label htmlFor="org_timezone">Time Zone</Label>
+              <Input id="org_timezone" name="org_timezone" placeholder="Asia/Kolkata" defaultValue="Asia/Kolkata" />
             </div>
             <div className="space-y-2">
-              <Label>Default Currency</Label>
-              <Input placeholder="INR" defaultValue="INR" />
+              <Label htmlFor="org_currency">Default Currency</Label>
+              <Input id="org_currency" name="org_currency" placeholder="INR" defaultValue="INR" />
             </div>
             <CardFooter>
               <Button>Save Changes</Button>

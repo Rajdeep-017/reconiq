@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import String, Boolean, Text
-from sqlalchemy.dialects.postgresql import JSONB
+import uuid
+
+import sqlalchemy as sa
+from sqlalchemy import String, Boolean, Text, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -15,9 +18,18 @@ class Partner(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "partners"
 
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     code: Mapped[str] = mapped_column(
-        String(50), nullable=False, unique=True, index=True
+        String(50), nullable=False, index=True
+    )
+    __table_args__ = (
+        # Partner name unique per organization
+        sa.UniqueConstraint("org_id", "name", name="uq_partners_org_id_name"),
+        # Partner code globally unique
+        sa.UniqueConstraint("code", name="uq_partners_code"),
     )
     partner_type: Mapped[str] = mapped_column(
         String(50), nullable=False
@@ -27,5 +39,5 @@ class Partner(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     settings: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     def __repr__(self) -> str:
-        return f"<Partner {self.code} ({self.partner_type})>"
+        return f"<Partner {self.code} ({self.partner_type}) org_id={self.org_id}>"
 

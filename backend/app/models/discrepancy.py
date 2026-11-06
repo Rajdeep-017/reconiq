@@ -56,6 +56,9 @@ class Discrepancy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "discrepancies"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("reconciliation_runs.id"), nullable=False, index=True
     )
@@ -130,6 +133,9 @@ class Claim(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "claims"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     discrepancy_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("discrepancies.id"), nullable=False, index=True
     )
@@ -182,6 +188,9 @@ class ClaimEvidence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "claim_evidence"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     claim_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("claims.id"), nullable=False, index=True
     )

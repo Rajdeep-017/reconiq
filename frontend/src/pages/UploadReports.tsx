@@ -7,9 +7,12 @@ import { truncate, cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle
+} from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import {
   Upload, FileX, Plus, Loader2, CheckCircle2, AlertCircle,
   ExternalLink
@@ -45,7 +48,6 @@ export function UploadReports() {
   const isUploading = uploadMutation.isPending
   const isDisabled = !selectedFile || !partnerId || !documentType || isUploading || uploadStage === 'uploading'
 
-  // Validate file before submission
   const validateFile = useCallback((file: File): { valid: boolean; errors: string[]; warnings: string[] } => {
     const errors: string[] = []
     const warnings: string[] = []
@@ -74,7 +76,6 @@ export function UploadReports() {
     return { valid: errors.length === 0, errors, warnings }
   }, [])
 
-  // Handle drag-over to prevent default browser behavior
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
   }, [])
@@ -120,7 +121,6 @@ export function UploadReports() {
     setUploadStage('validating')
     setUploadProgress(0)
 
-    // Simulate validation stage
     setTimeout(() => {
       setUploadStage('uploading')
     }, 500)
@@ -167,284 +167,403 @@ export function UploadReports() {
       {/* Page header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Upload Financial Reports</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Upload Financial Reports</h1>
           <p className="text-muted-foreground">
-            Upload marketplace, payment gateway, COD, logistics, and return reports for reconciliation.
+            Upload marketplace, payment gateway, COD, logistics and return reports for reconciliation.
           </p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" /> New Upload
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <a href="/uploads">View History</a>
+          </Button>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" /> New Upload
+          </Button>
+        </div>
       </div>
 
-      {/* Upload form */}
-      <Card className="max-w-3xl">
-        <CardHeader>
-          <CardTitle>Select Report</CardTitle>
-          <CardDescription>
-            Choose a partner and report type, then upload your file.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* Partner selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Partner</Label>
-              <Select
-                value={partnerId}
-                onValueChange={(val) => setPartnerId(val as string)}
-                disabled={isUploading}
-              >
-                <Select.Trigger className="w-full">
-                  <Select.Value placeholder="Select partner..." />
-                </Select.Trigger>
-                <Select.Content>
-                  {(partners || []).map((p) => (
-                    <Select.Item key={p.id} value={p.id}>{p.name}</Select.Item>
-                  ))}
-                  <Select.Item value="amazon">Amazon</Select.Item>
-                  <Select.Item value="flipkart">Flipkart</Select.Item>
-                  <Select.Item value="myntra">Myntra</Select.Item>
-                  <Select.Item value="meesho">Meesho</Select.Item>
-                </Select.Content>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Report Type</Label>
-              <Select
-                value={documentType}
-                onValueChange={(val) => setDocumentType(val as string)}
-                disabled={isUploading}
-              >
-                <Select.Trigger className="w-full">
-                  <Select.Value placeholder="Select report type..." />
-                </Select.Trigger>
-                <Select.Content>
-                  {DOCUMENT_TYPES.map((dt) => (
-                    <Select.Item key={dt.value} value={dt.value}>{dt.label}</Select.Item>
-                  ))}
-                </Select.Content>
-              </Select>
-            </div>
-          </div>
-
-          {/* Drop zone */}
-          <div
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            className={cn(
-              'relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200',
-              uploadStage === 'uploading' || uploadStage === 'processing'
-                ? 'border-primary bg-primary/5'
-                : 'border-border bg-muted/50 hover:border-primary/50 hover:bg-primary/5',
-              isUploading && 'pointer-events-none opacity-60'
-            )}
-          >
-            <div className="flex flex-col items-center justify-center gap-3 pointer-events-none">
-              <Upload className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground">
-                Drag & drop your file here
-              </p>
-              <p className="text-xs text-muted-foreground">
-                CSV or XLSX · Max {MAX_FILE_SIZE_MB} MB
-              </p>
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  const input = document.getElementById('file-input') as HTMLInputElement
-                  input?.click()
-                }}
-                className="mt-2 text-sm text-primary underline-offset-4 hover:underline"
-              >
-                Browse files
-              </button>
-              <input
-                id="file-input"
-                type="file"
-                accept=".csv,.xlsx"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleFileSelect(e.target.files[0])
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Selected file details */}
-          {selectedFile && (
-            <div className="bg-card border border-border rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
-                  {selectedFile?.name.charAt(0).toUpperCase()}
+      {/* Two-column upload workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)] gap-6">
+        {/* Main column: Upload form */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Select Report</CardTitle>
+              <CardDescription>
+                Choose a partner and report type, then upload your file.
+              AI-assisted column mapping will be available after upload.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Partner & Report Type selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="partner">Partner</Label>
+                  <Select
+                    value={partnerId}
+                    onValueChange={(val) => setPartnerId(val as string)}
+                    disabled={isUploading}
+                  >
+                    <Select.Trigger className="w-full">
+                      <Select.Value placeholder="Select partner…" />
+                    </Select.Trigger>
+                    <Select.Content>
+                      {(partners || []).map((p) => (
+                        <Select.Item key={p.id} value={p.id}>{p.name}</Select.Item>
+                      ))}
+                      <Select.Item value="amazon">Amazon</Select.Item>
+                      <Select.Item value="flipkart">Flipkart</Select.Item>
+                      <Select.Item value="myntra">Myntra</Select.Item>
+                      <Select.Item value="meesho">Meesho</Select.Item>
+                    </Select.Content>
+                  </Select>
                 </div>
-                <span className="text-sm font-medium truncate-title" title={selectedFile.name}>
-                  {truncate(selectedFile.name, 40)}
-                </span>
-                <button
-                  onClick={removeFile}
-                  className="ml-auto p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded"
-                  aria-label="Remove file"
-                >
-                  <FileX className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>File size</span>
-                  <span>{parseFloat(fileSizeMB) > 1 ? `${fileSizeMB} MB` : `${fileSizeKB} KB`}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>File type</span>
-                  <span>{selectedFile.type}</span>
+
+                <div className="space-y-2">
+                  <Label htmlFor="document_type">Report Type</Label>
+                  <Select
+                    value={documentType}
+                    onValueChange={(val) => setDocumentType(val as string)}
+                    disabled={isUploading}
+                  >
+                    <Select.Trigger className="w-full">
+                      <Select.Value placeholder="Select report type…" />
+                    </Select.Trigger>
+                    <Select.Content>
+                      {DOCUMENT_TYPES.map((dt) => (
+                        <Select.Item key={dt.value} value={dt.value}>{dt.label}</Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Validation results */}
-          {validationResult && (
-            <div className={cn(
-              'p-3 rounded-lg text-sm',
-              validationResult.valid ? 'bg-green-50 border border-green-100' : 'bg-red-50 border border-red-100'
-            )}>
-              <div className="flex items-start gap-2">
-                {validationResult.valid ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+              {/* Drag-and-drop zone */}
+              <div
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                className={cn(
+                  'relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 min-h-[220px]',
+                  uploadStage === 'uploading' || uploadStage === 'processing'
+                    ? 'border-primary bg-primary/50'
+                    : 'border-border bg-secondary/50 hover:border-primary/50 hover:bg-primary/10',
+                  isUploading && 'pointer-events-none opacity-60'
                 )}
-                <div>
-                  {validationResult.valid ? (
-                    <p className="font-medium text-green-800">File passed validation</p>
-                  ) : (
-                    <p className="font-medium text-red-800">Validation failed</p>
-                  )}
-                  {validationResult.errors.length > 0 && (
-                    <ul className="mt-1 list-disc list-inside text-sm text-red-700">
-                      {validationResult.errors.map((e, i) => (
-                        <li key={i}>{e}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {validationResult.warnings.length > 0 && (
-                    <ul className="mt-1 list-disc list-inside text-sm text-amber-700">
-                      {validationResult.warnings.map((e, i) => (
-                        <li key={i}>{e}</li>
-                      ))}
-                    </ul>
-                  )}
+              >
+                <div className="flex flex-col items-center justify-center gap-3 pointer-events-none z-10">
+                  <Upload className="h-10 w-10 text-muted-foreground" />
+                  <p className="text-sm font-medium text-foreground">
+                    Drag & drop your file here
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    CSV or XLSX · Max {MAX_FILE_SIZE_MB} MB
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      const input = document.getElementById('file-input') as HTMLInputElement
+                      input?.click()
+                    }}
+                    className="mt-3 text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    Browse files
+                  </button>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".csv,.xlsx"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) handleFileSelect(e.target.files[0])
+                    }}
+                  />
                 </div>
               </div>
-            </div>
-          )}
 
-          {error && (
-            <Alert variant="destructive">
-              <AlertTitle>Upload Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-between items-end">
-            <div className="flex items-center gap-2">
-              {isUploading && (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Uploading…</span>
+              {/* Selected file details */}
+              {selectedFile && (
+                <div className="bg-card border border-border rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="h-8 w-8 rounded-full bg-muted overflow-hidden shrink-0">
+                      <span className="flex h-full w-full items-center justify-center text-xs font-medium text-muted-foreground">
+                        {selectedFile.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate-title" title={selectedFile.name}>
+                        {truncate(selectedFile.name, 40)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {parseFloat(fileSizeMB) > 1 ? `${fileSizeMB} MB` : `${fileSizeKB} KB`} · {selectedFile.type}
+                      </p>
+                    </div>
+                    <button
+                      onClick={removeFile}
+                      className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                      aria-label="Remove file"
+                    >
+                      <FileX className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               )}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={removeFile}
-                disabled={isUploading || !selectedFile}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={isDisabled}
-                className="flex items-center gap-2"
-              >
-                {uploadStage === 'uploading' ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Uploading…
-                  </span>
-                ) : uploadStage === 'processing' ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Processing…
-                  </span>
-                ) : (
-                  <span>Upload Report</span>
-                )}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Progress section */}
-      {(uploadStage === 'uploading' || uploadStage === 'processing') && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Upload Progress</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span>{uploadStage === 'uploading' ? 'Uploading file…' : 'Processing file…'}</span>
-              <span>{uploadProgress}%</span>
-            </div>
-            <Progress value={uploadProgress} />
-          </CardContent>
-        </Card>
-      )}
+              {/* Validation results */}
+              {validationResult && (
+                <div className={cn(
+                  'p-3 rounded-lg text-sm border',
+                  validationResult.valid ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'
+                )}>
+                  <div className="flex items-start gap-2">
+                    {validationResult.valid ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      {validationResult.valid ? (
+                        <p className="font-medium text-green-800">File passed validation</p>
+                      ) : (
+                        <p className="font-medium text-red-800">Validation failed</p>
+                      )}
+                      {validationResult.errors.length > 0 && (
+                        <ul className="mt-1 list-disc list-inside text-xs text-red-700">
+                          {validationResult.errors.map((e, i) => (
+                            <li key={i}>{e}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {validationResult.warnings.length > 0 && (
+                        <ul className="mt-1 list-disc list-inside text-xs text-amber-700">
+                          {validationResult.warnings.map((e, i) => (
+                            <li key={i}>{e}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
-      {/* Completed state */}
-      {uploadStage === 'completed' && (
-        <Card className="border-green-200 bg-green-50">
-          <CardHeader className="flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-green-600" />
-            <CardTitle>Upload Complete</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm">Your file has been uploaded and is being processed.</p>
-            <div className="mt-4 flex gap-2">
-              <Button variant="outline" asChild>
-                <a href="/uploads">View Upload History</a>
-              </Button>
-              <Button asChild onClick={() => navigate('/mapping')}>
-                Review Column Mapping <ExternalLink className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertTitle>Upload Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-      {/* Error state with retry */}
-      {uploadStage === 'error' && selectedFile && (
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-red-600" />
-            <CardTitle>Upload Failed</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm">{error}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={removeFile}>
-                Remove File
-              </Button>
-              <Button onClick={retryUpload}>
-                <Loader2 className="h-4 w-4 animate-spin" /> Retry Upload
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-end">
+                <div className="flex items-center gap-2">
+                  {isUploading && (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                      <span className="text-sm text-muted-foreground">Uploading…</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={removeFile}
+                    disabled={isUploading || !selectedFile}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isDisabled}
+                    className="flex items-center gap-2"
+                  >
+                    {uploadStage === 'uploading' ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Uploading…
+                      </span>
+                    ) : uploadStage === 'processing' ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing…
+                      </span>
+                    ) : (
+                      <span>Upload Report</span>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Progress section */}
+          {(uploadStage === 'uploading' || uploadStage === 'processing') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Upload Progress</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span>{uploadStage === 'uploading' ? 'Uploading file…' : 'Processing file…'}</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <Progress value={uploadProgress} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Completed state */}
+          {uploadStage === 'completed' && (
+            <Card className="border-green-200 bg-green-50">
+              <CardHeader className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
+                <CardTitle>Upload Complete</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">Your file has been uploaded and is being processed.</p>
+                <div className="mt-4 flex gap-2">
+                  <Button variant="outline" asChild>
+                    <a href="/uploads">View Upload History</a>
+                  </Button>
+                  <Button asChild onClick={() => navigate('/mapping')}>
+                    Review Column Mapping <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Error state with retry */}
+          {uploadStage === 'error' && selectedFile && (
+            <Card className="border-red-200 bg-red-50">
+              <CardHeader className="flex items-center gap-3">
+                <AlertCircle className="h-6 w-6 text-red-600 shrink-0" />
+                <CardTitle>Upload Failed</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm">{error}</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={removeFile}>
+                    Remove File
+                  </Button>
+                  <Button onClick={retryUpload}>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Retry Upload
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Supporting column: Instructions */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Supported Formats</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
+                    <Upload className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">CSV & XLSX</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Upload marketplace order, settlement, freight, COD remittance and return reports.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
+                    <div className="w-3 h-3 bg-primary rounded-full" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Max 50 MB</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Files larger than 50 MB will be rejected. Split large files before uploading.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
+                    <div className="w-3 h-3 bg-primary rounded-full" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">UTF-8 Encoding</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Ensure files are saved with UTF-8 encoding for proper character handling.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Data Preparation Tips</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Include header row</h3>
+                    <p className="text-xs text-muted-foreground">
+                      The first row should contain column names for AI-assisted mapping.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Consistent formatting</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Use consistent date (YYYY-MM-DD) and currency formats across all files.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Partner identification</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Select the correct partner so mappings can be saved as reusable templates.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Upload Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Amazon Orders Dec 2024</span>
+                  <Badge variant="success">Parsed</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Flipkart Settlements Q4</span>
+                  <Badge variant="warning">Mapping</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Myntra Freight Invoices</span>
+                  <Badge variant="success">Normalized</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

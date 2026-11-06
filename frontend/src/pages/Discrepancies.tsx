@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle
+} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { formatCurrencyINR } from '@/lib/utils'
+import { useDiscrepancies, useUpdateDiscrepancy } from '@/hooks/useDiscrepancies'
 import { Download } from 'lucide-react'
 
 const DISCREPANCY_CATEGORIES = [
@@ -24,153 +27,107 @@ const DISCREPANCY_CATEGORIES = [
   'duplicate_deduction',
 ]
 
-const DISCREPANCY_STATUSES = ['open', 'verified', 'resolved', 'dismissed']
+const DISCREPANCY_STATUSES = ['detected', 'verified', 'disputed', 'resolved', 'dismissed']
+
+const categoryLabels: Record<string, string> = {
+  short_payment: 'Short Payment',
+  missing_settlement: 'Missing Settlement',
+  unpaid_order: 'Unpaid Order',
+  missing_cod_remittance: 'Missing COD Remittance',
+  freight_overcharge: 'Freight Overcharge',
+  incorrect_freight_weight: 'Incorrect Freight Weight',
+  incorrect_freight_zone: 'Incorrect Freight Zone',
+  return_refund_mismatch: 'Return/Refund Mismatch',
+  duplicate_deduction: 'Duplicate Deduction',
+}
 
 export function Discrepancies() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [partnerFilter, setPartnerFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [dateFilter, setDateFilter] = useState('')
 
-  // Dev fixtures — clearly marked
-  const DISCREPANCIES_DATA = [
-    {
-      id: 'DSC-2024-001',
-      order_ref: 'ORD-2024-1128',
-      partner: 'Amazon',
-      category: 'short_payment',
-      categoryLabel: 'Short Payment',
-      expected: 2499.00,
-      actual: 2399.00,
-      difference: 100.00,
-      date: '16 Dec 2024',
-      status: 'open' as const,
-      severity: 'high',
-    },
-    {
-      id: 'DSC-2024-002',
-      order_ref: 'ORD-2024-1135',
-      partner: 'Flipkart',
-      category: 'missing_settlement',
-      categoryLabel: 'Missing Settlement',
-      expected: 1850.00,
-      actual: 0,
-      difference: 1850.00,
-      date: '15 Dec 2024',
-      status: 'open' as const,
-      severity: 'critical',
-    },
-    {
-      id: 'DSC-2024-003',
-      order_ref: 'ORD-2024-1142',
-      partner: 'Myntra',
-      category: 'freight_overcharge',
-      categoryLabel: 'Freight Overcharge',
-      expected: 150.00,
-      actual: 220.00,
-      difference: -70.00,
-      date: '14 Dec 2024',
-      status: 'verified' as const,
-      severity: 'medium',
-    },
-    {
-      id: 'DSC-2024-004',
-      order_ref: 'ORD-2024-1150',
-      partner: 'Meesho',
-      category: 'missing_cod_remittance',
-      categoryLabel: 'Missing COD Remittance',
-      expected: 899.00,
-      actual: 0,
-      difference: 899.00,
-      date: '13 Dec 2024',
-      status: 'open' as const,
-      severity: 'high',
-    },
-    {
-      id: 'DSC-2024-005',
-      order_ref: 'ORD-2024-1158',
-      partner: 'Amazon',
-      category: 'duplicate_deduction',
-      categoryLabel: 'Duplicate Deduction',
-      expected: 0,
-      actual: -450.00,
-      difference: 450.00,
-      date: '12 Dec 2024',
-      status: 'dismissed' as const,
-      severity: 'low',
-    },
-    {
-      id: 'DSC-2024-006',
-      order_ref: 'ORD-2024-1165',
-      partner: 'Flipkart',
-      category: 'return_refund_mismatch',
-      categoryLabel: 'Return/Refund Mismatch',
-      expected: 1200.00,
-      actual: 950.00,
-      difference: 250.00,
-      date: '11 Dec 2024',
-      status: 'verified' as const,
-      severity: 'medium',
-    },
-    {
-      id: 'DSC-2024-007',
-      order_ref: 'ORD-2024-1172',
-      partner: 'Myntra',
-      category: 'incorrect_freight_weight',
-      categoryLabel: 'Incorrect Freight Weight',
-      expected: 200.00,
-      actual: 280.00,
-      difference: -80.00,
-      date: '10 Dec 2024',
-      status: 'open' as const,
-      severity: 'low',
-    },
-    {
-      id: 'DSC-2024-008',
-      order_ref: 'ORD-2024-1180',
-      partner: 'Amazon',
-      category: 'unpaid_order',
-      categoryLabel: 'Unpaid Order',
-      expected: 3400.00,
-      actual: 0,
-      difference: 3400.00,
-      date: '09 Dec 2024',
-      status: 'open' as const,
-      severity: 'critical',
-    },
-  ]
+  const { data: discrepancies = [], isLoading, error } = useDiscrepancies({
+    page: 1,
+    page_size: 100,
+  })
+  const updateMutation = useUpdateDiscrepancy()
 
-  const totalDetected = DISCREPANCIES_DATA.reduce((acc, d) => acc + Math.abs(d.difference), 0)
-  const verifiedClaimable = DISCREPANCIES_DATA
-    .filter(d => d.status === 'verified')
-    .reduce((acc, d) => acc + Math.abs(d.difference), 0)
-  const pendingReview = DISCREPANCIES_DATA.filter(d => d.status === 'open').length
-  const resolvedAmount = DISCREPANCIES_DATA
-    .filter((d) => String(d.status) === 'resolved')
-    .reduce((acc, d) => acc + Math.abs(Number(d.difference)), 0)
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Discrepancies</h1>
+            <p className="text-muted-foreground">
+              Financial issues detected during reconciliation.
+            </p>
+          </div>
+        </div>
+        <div className="h-96 flex items-center justify-center">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border-4 border-border border-t-primary animate-spin" />
+        </div>
+      </div>
+    )
+  }
 
-  const filtered = DISCREPANCIES_DATA.filter(d => {
-    if (search && !d.order_ref.toLowerCase().includes(search.toLowerCase()) && !d.partner.toLowerCase().includes(search.toLowerCase())) return false
-    if (categoryFilter && d.category !== categoryFilter) return false
-    if (partnerFilter && d.partner !== partnerFilter) return false
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Failed to load discrepancies</AlertTitle>
+        <AlertDescription>{String(error)}</AlertDescription>
+      </Alert>
+    )
+  }
+
+  const filtered = discrepancies.filter((d: { order_reference: string; discrepancy_type: string; status: string }) => {
+    if (search && !d.order_reference.toLowerCase().includes(search.toLowerCase()))
+      return false
+    if (categoryFilter && d.discrepancy_type !== categoryFilter) return false
     if (statusFilter && d.status !== statusFilter) return false
     return true
   })
 
+  const totalDetected = discrepancies.reduce(
+    (acc: number, d: { difference_amount: string | number }) => acc + Math.abs(Number(d.difference_amount || 0)),
+    0
+  )
+  const verifiedClaimable = discrepancies
+    .filter((d: { status: string }) => d.status === 'verified')
+    .reduce((acc: number, d: { difference_amount: string | number }) => acc + Math.abs(Number(d.difference_amount || 0)), 0)
+  const pendingReview = discrepancies.filter((d: { status: string }) => d.status === 'detected').length
+  const resolvedAmount = discrepancies
+    .filter((d: { status: string }) => d.status === 'resolved')
+    .reduce((acc: number, d: { difference_amount: string | number }) => acc + Math.abs(Number(d.difference_amount || 0)), 0)
+
   const statusBadge = (s: string) => {
     switch (s) {
-      case 'open': return 'bg-amber-100 text-amber-800 border-amber-200'
-      case 'verified': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'resolved': return 'bg-green-100 text-green-800 border-green-200'
-      case 'dismissed': return 'bg-slate-100 text-slate-800 border-slate-200'
-      default: return 'bg-slate-100 text-slate-800 border-slate-200'
+      case 'detected':
+        return 'bg-amber-100 text-amber-800 border-amber-200'
+      case 'verified':
+        return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'resolved':
+        return 'bg-green-100 text-green-800 border-green-200'
+      case 'dismissed':
+        return 'bg-slate-100 text-slate-800 border-slate-200'
+      case 'disputed':
+        return 'bg-purple-100 text-purple-800 border-purple-200'
+      default:
+        return 'bg-slate-100 text-slate-800 border-slate-200'
+    }
+  }
+
+  const updateDiscrepancy = async (id: string, status: string) => {
+    try {
+      await updateMutation.mutateAsync({ id, data: { status } })
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.message || 'Update failed'
+      alert(msg)
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Discrepancies</h1>
@@ -185,7 +142,6 @@ export function Discrepancies() {
         </div>
       </div>
 
-      {/* Top summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader>
@@ -193,7 +149,9 @@ export function Discrepancies() {
             <CardDescription>Total discrepancy amount</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrencyINR(totalDetected)}</div>
+            <div className="text-2xl font-bold text-red-600">
+              {formatCurrencyINR(totalDetected)}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -202,7 +160,9 @@ export function Discrepancies() {
             <CardDescription>Ready for claim submission</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrencyINR(verifiedClaimable)}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrencyINR(verifiedClaimable)}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -220,66 +180,60 @@ export function Discrepancies() {
             <CardDescription>Discrepancies resolved</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrencyINR(resolvedAmount)}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrencyINR(resolvedAmount)}
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           <div className="space-y-2">
-            <Label>Search</Label>
+            <Label htmlFor="search">Search</Label>
             <Input
-              placeholder="Order reference, partner…"
+              id="search"
+              placeholder="Order reference…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label>Category</Label>
-            <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as string)}>
+            <Label htmlFor="category">Category</Label>
+            <Select
+              value={categoryFilter}
+              onValueChange={(v) => setCategoryFilter(v as string)}
+            >
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="All categories" />
               </Select.Trigger>
               <Select.Content>
-                {DISCREPANCY_CATEGORIES.map(cat => {
-                  const item = DISCREPANCIES_DATA.find(d => d.category === cat)
-                  return <Select.Item key={cat} value={cat}>{item?.categoryLabel || cat}</Select.Item>
-                })}
+                {DISCREPANCY_CATEGORIES.map((cat) => (
+                  <Select.Item key={cat} value={cat}>
+                    {categoryLabels[cat] || cat}
+                  </Select.Item>
+                ))}
               </Select.Content>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Partner</Label>
-            <Select value={partnerFilter} onValueChange={(v) => setPartnerFilter(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="All partners" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="Amazon">Amazon</Select.Item>
-                <Select.Item value="Flipkart">Flipkart</Select.Item>
-                <Select.Item value="Myntra">Myntra</Select.Item>
-                <Select.Item value="Meesho">Meesho</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Status</Label>
+            <Label htmlFor="status">Status</Label>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as string)}>
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="All statuses" />
               </Select.Trigger>
               <Select.Content>
-                {DISCREPANCY_STATUSES.map(s => <Select.Item key={s} value={s}>{s}</Select.Item>)}
+                {DISCREPANCY_STATUSES.map((s) => (
+                  <Select.Item key={s} value={s}>{s}</Select.Item>
+                ))}
               </Select.Content>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Date Range</Label>
+            <Label htmlFor="date_range">Date Range</Label>
             <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as string)}>
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="All dates" />
@@ -291,33 +245,15 @@ export function Discrepancies() {
               </Select.Content>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Amount Range</Label>
-            <Select value="">
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="Any amount" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="0-1000">₹0 – ₹1,000</Select.Item>
-                <Select.Item value="1000-5000">₹1,000 – ₹5,000</Select.Item>
-                <Select.Item value="5000-10000">₹5,000 – ₹10,000</Select.Item>
-                <Select.Item value="10000+">₹10,000+</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
         </CardContent>
       </Card>
 
-      {/* Discrepancies table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle>Detected Discrepancies</CardTitle>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled>
               View Evidence
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              Mark Resolved
             </Button>
           </div>
         </CardHeader>
@@ -328,7 +264,6 @@ export function Discrepancies() {
                 <TableRow>
                   <TableHead>Discrepancy ID</TableHead>
                   <TableHead className="w-1/6">Order Reference</TableHead>
-                  <TableHead className="w-1/6">Partner</TableHead>
                   <TableHead className="w-1/6">Category</TableHead>
                   <TableHead className="w-1/6 text-right">Expected</TableHead>
                   <TableHead className="w-1/6 text-right">Actual</TableHead>
@@ -341,63 +276,69 @@ export function Discrepancies() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                       No discrepancies found matching your filters.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((d) => (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-mono text-sm">{d.id}</TableCell>
-                      <TableCell className="font-medium truncate-title" title={d.order_ref}>{d.order_ref}</TableCell>
-                      <TableCell>{d.partner}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="text-xs truncate-title" title={d.categoryLabel}>
-                          {d.categoryLabel}
-                        </Badge>
-                        <Badge variant={d.severity === 'critical' ? 'destructive' : d.severity === 'high' ? 'warning' : 'secondary'} className="ml-1 text-xs">
-                          {d.severity}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right currency-cell">{formatCurrencyINR(d.expected)}</TableCell>
-                      <TableCell className="text-right currency-cell">{formatCurrencyINR(d.actual)}</TableCell>
-                      <TableCell className={`text-right font-medium ${d.difference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {formatCurrencyINR(d.difference)}
-                      </TableCell>
-                      <TableCell className="text-xs">{d.date}</TableCell>
-                      <TableCell>
-                        <Badge className={statusBadge(d.status)}>{d.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="outline" size="sm" asChild onClick={() => {}}>
-                            <a href="#">View</a>
-                          </Button>
-                          <Button variant="outline" size="sm" asChild onClick={() => {}}>
-                            <a href="#">Evidence</a>
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => {}}>
-                            Claim
-                          </Button>
-                          {d.status === 'open' && (
-                            <Button variant="destructive" size="sm" onClick={() => {}}>
-                              Resolve
+                  <>
+                    {filtered.map((d: { id: string; order_reference: string; discrepancy_type: string; status: string; expected_amount: string | number; actual_amount: string | number; difference_amount: string | number; created_at: string | null }) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="font-mono text-sm">{d.id}</TableCell>
+                        <TableCell className="font-medium truncate-title" title={d.order_reference}>
+                          {d.order_reference}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs truncate-title" title={categoryLabels[d.discrepancy_type] || d.discrepancy_type}>
+                            {categoryLabels[d.discrepancy_type] || d.discrepancy_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right currency-cell">
+                          {formatCurrencyINR(d.expected_amount)}
+                        </TableCell>
+                        <TableCell className="text-right currency-cell">
+                          {formatCurrencyINR(d.actual_amount)}
+                        </TableCell>
+                        <TableCell className={`text-right font-medium ${Number(d.difference_amount) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatCurrencyINR(d.difference_amount)}
+                        </TableCell>
+                        <TableCell className="text-xs">{d.created_at ? d.created_at.slice(0, 10) : '—'}</TableCell>
+                        <TableCell>
+                          <Badge className={statusBadge(d.status)}>{d.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateDiscrepancy(d.id, 'verified')}
+                              disabled={updateMutation.isPending}
+                            >
+                              Verify
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                            {d.status === 'detected' && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => updateDiscrepancy(d.id, 'dismissed')}
+                                disabled={updateMutation.isPending}
+                              >
+                                Dismiss
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
                 )}
               </TableBody>
             </Table>
           </div>
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted-foreground">Showing {filtered.length} of {DISCREPANCIES_DATA.length} discrepancies</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled>Previous</Button>
-              <Button variant="outline" size="sm">Next</Button>
-            </div>
+            <span className="text-sm text-muted-foreground">
+              Showing {filtered.length} of {discrepancies.length} discrepancies
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -405,7 +346,9 @@ export function Discrepancies() {
       <Alert variant="info">
         <AlertTitle>Important distinction</AlertTitle>
         <AlertDescription>
-          Detected discrepancies represent potential recovery opportunities. They are not the same as recovered money. Only amounts in the "Verified Claimable" card should be treated as claimable, and only amounts marked "Resolved" represent actual recovery.
+          Detected discrepancies represent potential recovery opportunities. They are not the same as recovered money.
+          Only amounts in the "Verified Claimable" card should be treated as claimable, and only amounts marked "Resolved"
+          represent actual recovery.
         </AlertDescription>
       </Alert>
     </div>

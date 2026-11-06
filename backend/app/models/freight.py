@@ -19,6 +19,9 @@ class FreightRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "freight_records"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     upload_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True, index=True
     )
@@ -75,6 +78,9 @@ class RateCard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "rate_cards"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     partner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("partners.id"), nullable=False, index=True
     )

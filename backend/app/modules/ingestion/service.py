@@ -36,6 +36,7 @@ class IngestionService:
         document_type: str,
         user_id: uuid.UUID,
         partner_id: uuid.UUID | None = None,
+        org_id: uuid.UUID | None = None,
     ) -> Upload:
         """Validate, store and parse an uploaded file."""
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -48,8 +49,11 @@ class IngestionService:
 
         checksum = hashlib.sha256(file_content).hexdigest()
 
-        # Check duplicate
-        existing = self.db.query(Upload).filter(Upload.sha256_checksum == checksum).first()
+        # Check duplicate within the same organization
+        q = self.db.query(Upload).filter(Upload.sha256_checksum == checksum)
+        if org_id is not None:
+            q = q.filter(Upload.org_id == org_id)
+        existing = q.first()
         if existing:
             raise ConflictException(
                 "Duplicate file detected",
@@ -63,6 +67,7 @@ class IngestionService:
 
         # Create record
         upload = Upload(
+            org_id=org_id,
             uploaded_by_id=user_id,
             partner_id=partner_id,
             original_filename=filename,
@@ -79,7 +84,7 @@ class IngestionService:
 
         # Parse file
         try:
-            self._parse_file(upload, file_path, ext)
+            self._parse_file(upload, file_path, ext, org_id=org_id)
         except Exception as e:
             upload.status = UploadStatus.VALIDATION_FAILED
             upload.error_message = str(e)[:500]
@@ -87,7 +92,13 @@ class IngestionService:
 
         return upload
 
-    def _parse_file(self, upload: Upload, file_path: Path, ext: str) -> None:
+    def _parse_file(
+        self,
+        upload: Upload,
+        file_path: Path,
+        ext: str,
+        org_id: uuid.UUID | None = None,
+    ) -> None:
         """Parse file, extract headers/sample/rows."""
         upload.status = UploadStatus.VALIDATING
         self.db.commit()
@@ -114,6 +125,7 @@ class IngestionService:
         rows_to_add = []
         for i, row_dict in enumerate(df.iter_rows(named=True)):
             rows_to_add.append(ImportRow(
+                org_id=org_id,
                 upload_id=upload.id,
                 row_number=i + 1,
                 raw_data=dict(row_dict),
@@ -137,9 +149,13 @@ class IngestionService:
             raise NotFoundException(f"Upload {upload_id} not found")
         return upload
 
-    def list_uploads(self, page: int = 1, page_size: int = 50) -> tuple[list[Upload], int]:
-        q = self.db.query(Upload).order_by(Upload.created_at.desc())
+    def list_uploads(
+        self, page: int = 1, page_size: int = 50, org_id: uuid.UUID | None = None
+    ) -> tuple[list[Upload], int]:
+        q = self.db.query(Upload)
+        if org_id is not None:
+            q = q.filter(Upload.org_id == org_id)
+        q = q.order_by(Upload.created_at.desc())
         total = q.count()
         uploads = q.offset((page - 1) * page_size).limit(page_size).all()
         return uploads, total
-

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
@@ -10,10 +9,104 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, ResponsiveContainer,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area
 } from 'recharts'
+import {
+  useSettlementTrends,
+  useMatchingTrends,
+  usePartnerPerformance,
+  usePartnerDiscrepancies,
+  useFreightOvercharge,
+  useCODRemittance,
+  useReturnRefund,
+  useClaimRecovery,
+  useMonthWise,
+} from '@/hooks/useAnalytics'
+import { Download } from 'lucide-react'
+
+function EmptyChart({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+      <p className="text-sm">No data for {title}</p>
+    </div>
+  )
+}
+
 export function Analytics() {
   const [dateRange, setDateRange] = useState('30d')
   const [partnerFilter, setPartnerFilter] = useState('')
   const [categoryFilter] = useState('')
+
+  const {
+    data: settlementTrends,
+    isLoading: settlementLoading,
+  } = useSettlementTrends()
+  const {
+    isLoading: matchingLoading,
+  } = useMatchingTrends()
+  const {
+    data: partnerPerformance,
+    isLoading: partnerLoading,
+  } = usePartnerPerformance()
+  const {
+    data: partnerDiscrepancies,
+    isLoading: discrepanciesLoading,
+  } = usePartnerDiscrepancies()
+  const {
+    data: freightOvercharge,
+    isLoading: freightLoading,
+  } = useFreightOvercharge()
+  const {
+    data: codRemittance,
+    isLoading: codLoading,
+  } = useCODRemittance()
+  const {
+    data: returnRefund,
+    isLoading: returnsLoading,
+  } = useReturnRefund()
+  const {
+    data: claimRecovery,
+    isLoading: claimsLoading,
+  } = useClaimRecovery()
+  const {
+    data: monthWise,
+    isLoading: monthLoading,
+  } = useMonthWise()
+
+  const isLoading =
+    settlementLoading ||
+    matchingLoading ||
+    partnerLoading ||
+    discrepanciesLoading ||
+    freightLoading ||
+    codLoading ||
+    returnsLoading ||
+    claimsLoading ||
+    monthLoading
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Analytics</h1>
+            <p className="text-muted-foreground">
+              Data-driven financial analytics for reconciliation performance.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <Card key={i} className="h-72">
+              <CardContent>
+                <div className="flex h-48 items-center justify-center">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full border-4 border-border border-t-primary animate-spin" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -37,7 +130,7 @@ export function Analytics() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <Label>Date Range</Label>
+            <Label htmlFor="analytics_date_range">Date Range</Label>
             <Select value={dateRange} onValueChange={(v) => setDateRange(v as string)}>
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="Select range…" />
@@ -51,7 +144,7 @@ export function Analytics() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Partner</Label>
+            <Label htmlFor="analytics_partner">Partner</Label>
             <Select value={partnerFilter} onValueChange={(v) => setPartnerFilter(v as string)}>
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="All partners" />
@@ -65,7 +158,7 @@ export function Analytics() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Category</Label>
+            <Label htmlFor="analytics_category">Category</Label>
             <Select value={categoryFilter}>
               <Select.Trigger className="w-full">
                 <Select.Value placeholder="All categories" />
@@ -92,28 +185,40 @@ export function Analytics() {
             <CardTitle>Settlement Trends Over Time</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={[
-                    { name: 'Week 1', expected: 120000, received: 115000 },
-                    { name: 'Week 2', expected: 145000, received: 140000 },
-                    { name: 'Week 3', expected: 168000, received: 160000 },
-                    { name: 'Week 4', expected: 192000, received: 185000 },
-                    { name: 'Week 5', expected: 210000, received: 205000 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Amount (₹)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="expected" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="received" stroke="#10b981" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {settlementTrends && settlementTrends.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={settlementTrends}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Amount (₹)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="expected"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="received"
+                      stroke="#16a34a"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="settlement trends" />
+            )}
           </CardContent>
         </Card>
 
@@ -123,25 +228,26 @@ export function Analytics() {
             <CardTitle>Partner-wise Matching Rates</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Amazon', rate: 94 },
-                    { name: 'Flipkart', rate: 87 },
-                    { name: 'Myntra', rate: 91 },
-                    { name: 'Meesho', rate: 82 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Bar dataKey="rate" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {partnerPerformance && partnerPerformance.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={partnerPerformance}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="rate" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="partner matching rates" />
+            )}
           </CardContent>
         </Card>
 
@@ -151,25 +257,26 @@ export function Analytics() {
             <CardTitle>Partner-wise Discrepancy Values</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Amazon', value: 4500 },
-                    { name: 'Flipkart', value: 3200 },
-                    { name: 'Myntra', value: 1800 },
-                    { name: 'Meesho', value: 2100 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Discrepancy Value (₹)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {partnerDiscrepancies && partnerDiscrepancies.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={partnerDiscrepancies}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Discrepancy Value (₹)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="partner discrepancies" />
+            )}
           </CardContent>
         </Card>
 
@@ -179,25 +286,26 @@ export function Analytics() {
             <CardTitle>Freight Overcharge Analysis</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Amazon', overcharge: 850 },
-                    { name: 'Flipkart', overcharge: 620 },
-                    { name: 'Myntra', overcharge: 410 },
-                    { name: 'Meesho', overcharge: 290 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Overcharge (₹)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Bar dataKey="overcharge" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {freightOvercharge && freightOvercharge.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={freightOvercharge}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Overcharge (₹)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="overcharge" fill="#d97706" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="freight overcharge" />
+            )}
           </CardContent>
         </Card>
 
@@ -207,26 +315,39 @@ export function Analytics() {
             <CardTitle>COD Remittance Performance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={[
-                    { name: 'Week 1', remitted: 45000, collected: 48000 },
-                    { name: 'Week 2', remitted: 52000, collected: 55000 },
-                    { name: 'Week 3', remitted: 48000, collected: 51000 },
-                    { name: 'Week 4', remitted: 58000, collected: 62000 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Amount (₹)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="collected" stroke="#10b981" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="remitted" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {codRemittance && codRemittance.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={codRemittance}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Amount (₹)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Line
+                      type="monotone"
+                      dataKey="collected"
+                      stroke="#16a34a"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="remitted"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="COD remittance" />
+            )}
           </CardContent>
         </Card>
 
@@ -236,28 +357,28 @@ export function Analytics() {
             <CardTitle>Return/Refund Discrepancy Analysis</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Processed', value: 65, fill: '#10b981' },
-                      { name: 'Pending', value: 25, fill: '#f59e0b' },
-                      { name: 'Mismatched', value: 10, fill: '#ef4444' },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    <Tooltip />
-                    <Legend />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            {returnRefund && returnRefund.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={returnRefund}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Tooltip />
+                      <Legend />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="return/refund analysis" />
+            )}
           </CardContent>
         </Card>
 
@@ -267,26 +388,32 @@ export function Analytics() {
             <CardTitle>Claim Recovery Trends</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={[
-                    { name: 'Week 1', recovered: 1200 },
-                    { name: 'Week 2', recovered: 1800 },
-                    { name: 'Week 3', recovered: 2400 },
-                    { name: 'Week 4', recovered: 3100 },
-                    { name: 'Week 5', recovered: 3900 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Recovered (₹)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="recovered" fill="#8b5cf6" stroke="#8b5cf6" fillOpacity={0.6} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {claimRecovery && claimRecovery.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={claimRecovery}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis
+                      label={{ value: 'Recovered (₹)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip />
+                    <Area
+                      type="monotone"
+                      dataKey="recovered"
+                      fill="#7c3aed"
+                      stroke="#7c3aed"
+                      fillOpacity={0.6}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="claim recovery" />
+            )}
           </CardContent>
         </Card>
 
@@ -296,26 +423,26 @@ export function Analytics() {
             <CardTitle>Month-wise Reconciliation Performance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Oct', matched: 880, unmatched: 120 },
-                    { name: 'Nov', matched: 920, unmatched: 80 },
-                    { name: 'Dec', matched: 945, unmatched: 55 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Orders', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="matched" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="unmatched" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {monthWise && monthWise.length > 0 ? (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={monthWise}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" />
+                    <YAxis label={{ value: 'Orders', angle: -90, position: 'insideLeft' }} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="matched" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="unmatched" fill="#d97706" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart title="month-wise performance" />
+            )}
           </CardContent>
         </Card>
       </div>

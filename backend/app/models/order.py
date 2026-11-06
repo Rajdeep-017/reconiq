@@ -38,6 +38,9 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "orders"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     upload_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True, index=True
     )
@@ -105,6 +108,9 @@ class Return(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "returns"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     upload_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True, index=True
     )

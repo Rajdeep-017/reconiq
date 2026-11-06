@@ -18,6 +18,9 @@ class ColumnMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "column_mappings"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     upload_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=False, index=True
     )
@@ -44,6 +47,9 @@ class ColumnMappingTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "column_mapping_templates"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     partner_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("partners.id"), nullable=True
@@ -54,4 +60,5 @@ class ColumnMappingTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Relationships
     partner = relationship("Partner", foreign_keys=[partner_id])
+    organization = relationship("Organization", foreign_keys=[org_id])
 

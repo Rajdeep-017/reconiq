@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { extractErrorMessage } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
@@ -30,7 +31,7 @@ export function ReconciliationWorkspace() {
   const [confidenceFilter, setConfidenceFilter] = useState<string>('')
 
 
-  const { data: runs, isLoading, error } = useReconciliationRuns(1)
+  const { data: runs, isLoading, error, refetch } = useReconciliationRuns(1)
   const createMutation = useCreateReconciliationRun()
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -82,9 +83,9 @@ export function ReconciliationWorkspace() {
 
   if (error) {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" onRetry={refetch} retryLabel="Retry">
         <AlertTitle>Failed to load reconciliation data</AlertTitle>
-        <AlertDescription>{String(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
       </Alert>
     )
   }

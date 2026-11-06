@@ -1,10 +1,14 @@
 import * as React from 'react'
+import { AlertTriangle, Info, CheckCircle, Clock, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { AlertTriangle, Info, CheckCircle, Clock } from 'lucide-react'
 
 export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'destructive' | 'info' | 'warning' | 'success'
   title?: string
+  description?: React.ReactNode
+  onRetry?: () => void
+  retryLabel?: string
 }
 
 const variantIcons = {
@@ -19,12 +23,21 @@ export function Alert({
   className,
   variant = 'default',
   title,
+  description,
+  children,
+  onRetry,
+  retryLabel = 'Retry',
   ...props
 }: AlertProps) {
+  const hasContent = title || description || children || onRetry
+  if (!hasContent) {
+    return null
+  }
+
   return (
     <div
       className={cn(
-        'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-3.5 [&>svg]:top-3.5 [&>svg]:text-current [&>svg+p]:pl-7',
+        'relative w-full rounded-lg border px-4 py-3 text-sm [&>svg]:absolute [&>svg]:left-3.5 [&>svg]:top-3.5 [&>svg]:text-current',
         {
           default: 'bg-background text-foreground border-border',
           destructive: 'bg-destructive/50 text-destructive border-destructive/20',
@@ -37,7 +50,22 @@ export function Alert({
       {...props}
     >
       {variantIcons[variant]}
-      {title && <AlertTitle>{title}</AlertTitle>}
+      <div className="pl-7">
+        {title && <AlertTitle>{title}</AlertTitle>}
+        {description && <AlertDescription>{description}</AlertDescription>}
+        {children && <>{children}</>}
+      </div>
+      {onRetry && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="absolute right-3 top-3.5 mt-px flex items-center gap-1"
+          onClick={onRetry}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {retryLabel}
+        </Button>
+      )}
     </div>
   )
 }

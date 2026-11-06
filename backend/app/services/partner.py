@@ -12,10 +12,14 @@ class PartnerService:
     def __init__(self, db: Session):
         self.repo = PartnerRepository(db)
 
-    def create_partner(self, data: PartnerCreate) -> Partner:
+    def create_partner(self, data: PartnerCreate, org_id: UUID) -> Partner:
         if self.repo.code_exists(data.code):
             raise ConflictException(f"Partner code '{data.code}' already exists")
+        # Check name uniqueness within org
+        if self.repo.name_exists_in_org(data.name, org_id):
+            raise ConflictException(f"Partner name '{data.name}' already exists in this organization")
         partner = Partner(
+            org_id=org_id,
             name=data.name,
             code=data.code.lower(),
             partner_type=data.partner_type,
@@ -29,8 +33,8 @@ class PartnerService:
             raise NotFoundException(f"Partner {partner_id} not found")
         return p
 
-    def list_partners(self) -> list[Partner]:
-        return self.repo.list_all()
+    def list_partners(self, org_id: UUID) -> list[Partner]:
+        return self.repo.list_by_org(org_id)
 
     def update_partner(self, partner_id: UUID, data: PartnerUpdate) -> Partner:
         p = self.get_partner(partner_id)
@@ -41,4 +45,3 @@ class PartnerService:
         if data.is_active is not None:
             p.is_active = data.is_active
         return self.repo.update(p)
-

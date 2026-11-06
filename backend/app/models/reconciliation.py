@@ -42,6 +42,9 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "reconciliation_runs"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -116,6 +119,9 @@ class ReconciliationResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "reconciliation_results"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("reconciliation_runs.id"), nullable=False, index=True
     )
@@ -162,6 +168,9 @@ class MatchSuggestion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "match_suggestions"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("reconciliation_runs.id"), nullable=False, index=True
     )

@@ -24,11 +24,18 @@ class ReconciliationService:
         self.db = db
 
     def create_run(
-        self, name: str, recon_type: str, source_upload_id: uuid.UUID,
-        target_upload_id: uuid.UUID, user_id: uuid.UUID,
+        self,
+        name: str,
+        recon_type: str,
+        source_upload_id: uuid.UUID,
+        target_upload_id: uuid.UUID,
+        user_id: uuid.UUID,
+        org_id: uuid.UUID | None = None,
     ) -> ReconciliationRun:
         run = ReconciliationRun(
-            created_by_id=user_id, name=name,
+            org_id=org_id,
+            created_by_id=user_id,
+            name=name,
             recon_type=ReconType(recon_type),
             source_upload_id=source_upload_id,
             target_upload_id=target_upload_id,
@@ -85,24 +92,38 @@ class ReconciliationService:
                             status = MatchStatus.PARTIAL
 
                         result = ReconciliationResult(
-                            run_id=run.id, order_reference=order.order_reference,
-                            source_record_id=order.id, target_record_id=stl.id,
-                            match_method=MatchMethod.EXACT, match_status=status,
+                            org_id=run.org_id,
+                            run_id=run.id,
+                            order_reference=order.order_reference,
+                            source_record_id=order.id,
+                            target_record_id=stl.id,
+                            match_method=MatchMethod.EXACT,
+                            match_status=status,
                             confidence_score=Decimal("1.0"),
-                            expected_amount=expected, actual_amount=actual, difference=diff,
+                            expected_amount=expected,
+                            actual_amount=actual,
+                            difference=diff,
                         )
                         self.db.add(result)
                         matched += 1
 
                         # Create discrepancy if outside tolerance
                         if abs(diff) > TOLERANCE:
-                            disc_type = DiscrepancyType.SHORT_PAYMENT if diff < 0 else DiscrepancyType.EXCESS_PAYMENT
+                            disc_type = (
+                                DiscrepancyType.SHORT_PAYMENT
+                                if diff < 0
+                                else DiscrepancyType.EXCESS_PAYMENT
+                            )
                             severity = self._classify_severity(abs(diff))
                             disc = Discrepancy(
-                                run_id=run.id, partner_id=order.partner_id,
+                                org_id=run.org_id,
+                                run_id=run.id,
+                                partner_id=order.partner_id,
                                 order_reference=order.order_reference,
-                                discrepancy_type=disc_type, severity=severity,
-                                expected_amount=expected, actual_amount=actual,
+                                discrepancy_type=disc_type,
+                                severity=severity,
+                                expected_amount=expected,
+                                actual_amount=actual,
                                 difference_amount=diff,
                                 explanation=f"Settlement difference of ₹{diff} for order {order.order_reference}",
                             )
@@ -112,20 +133,28 @@ class ReconciliationService:
                     # Missing settlement
                     unmatched += 1
                     result = ReconciliationResult(
-                        run_id=run.id, order_reference=order.order_reference,
-                        source_record_id=order.id, target_record_id=None,
-                        match_method=MatchMethod.EXACT, match_status=MatchStatus.UNMATCHED,
+                        org_id=run.org_id,
+                        run_id=run.id,
+                        order_reference=order.order_reference,
+                        source_record_id=order.id,
+                        target_record_id=None,
+                        match_method=MatchMethod.EXACT,
+                        match_status=MatchStatus.UNMATCHED,
                         confidence_score=Decimal("0"),
-                        expected_amount=order.net_amount, actual_amount=Decimal("0"),
+                        expected_amount=order.net_amount,
+                        actual_amount=Decimal("0"),
                         difference=Decimal("0") - order.net_amount,
                     )
                     self.db.add(result)
                     disc = Discrepancy(
-                        run_id=run.id, partner_id=order.partner_id,
+                        org_id=run.org_id,
+                        run_id=run.id,
+                        partner_id=order.partner_id,
                         order_reference=order.order_reference,
                         discrepancy_type=DiscrepancyType.MISSING_SETTLEMENT,
                         severity=DiscrepancySeverity.HIGH,
-                        expected_amount=order.net_amount, actual_amount=Decimal("0"),
+                        expected_amount=order.net_amount,
+                        actual_amount=Decimal("0"),
                         difference_amount=Decimal("0") - order.net_amount,
                         explanation=f"No settlement found for order {order.order_reference}",
                     )
@@ -157,13 +186,22 @@ class ReconciliationService:
             raise NotFoundException(f"Reconciliation run {run_id} not found")
         return run
 
-    def list_runs(self, page: int = 1, page_size: int = 50) -> tuple[list[ReconciliationRun], int]:
-        q = self.db.query(ReconciliationRun).order_by(ReconciliationRun.created_at.desc())
+    def list_runs(
+        self, page: int = 1, page_size: int = 50, org_id: uuid.UUID | None = None
+    ) -> tuple[list[ReconciliationRun], int]:
+        q = self.db.query(ReconciliationRun)
+        if org_id is not None:
+            q = q.filter(ReconciliationRun.org_id == org_id)
+        q = q.order_by(ReconciliationRun.created_at.desc())
         total = q.count()
         return q.offset((page - 1) * page_size).limit(page_size).all(), total
 
     def get_results(self, run_id: uuid.UUID) -> list[ReconciliationResult]:
-        return self.db.query(ReconciliationResult).filter(ReconciliationResult.run_id == run_id).all()
+        return (
+            self.db.query(ReconciliationResult)
+            .filter(ReconciliationResult.run_id == run_id)
+            .all()
+        )
 
     @staticmethod
     def _classify_severity(amount: Decimal) -> DiscrepancySeverity:
@@ -174,4 +212,3 @@ class ReconciliationService:
         elif amount > Decimal("100"):
             return DiscrepancySeverity.MEDIUM
         return DiscrepancySeverity.LOW
-

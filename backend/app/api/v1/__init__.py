@@ -11,6 +11,7 @@ from app.api.v1.reconciliation import router as reconciliation_router
 from app.api.v1.discrepancies import router as discrepancies_router
 from app.api.v1.claims import router as claims_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.analytics import router as analytics_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
 
@@ -23,3 +24,5 @@ api_v1_router.include_router(reconciliation_router)
 api_v1_router.include_router(discrepancies_router)
 api_v1_router.include_router(claims_router)
 api_v1_router.include_router(dashboard_router)
+api_v1_router.include_router(analytics_router)
+

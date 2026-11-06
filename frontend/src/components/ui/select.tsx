@@ -3,7 +3,12 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const Select = SelectPrimitive.Root
+const Select = React.forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>>(
+  (_props, _ref) => {
+    return <SelectPrimitive.Root {..._props} />
+  }
+)
+Select.displayName = SelectPrimitive.Root.displayName
 
 const SelectGroup = SelectPrimitive.Group
 
@@ -117,7 +122,7 @@ const SelectSeparator = React.forwardRef<
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName
 
 // Type the Select component with static sub-components
-interface SelectComponentType extends React.FC<React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>> {
+interface SelectComponentType {
   Group: typeof SelectGroup
   Value: typeof SelectValue
   Trigger: typeof SelectTrigger
@@ -128,7 +133,7 @@ interface SelectComponentType extends React.FC<React.ComponentPropsWithoutRef<ty
   ScrollDownButton: typeof SelectScrollDownButton
 }
 
-const SelectWithStatics = Select as unknown as SelectComponentType
+const SelectWithStatics = Select as unknown as SelectComponentType & React.ForwardRefExoticComponent<Omit<React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>, 'ref'> & { ref?: React.Ref<HTMLDivElement> }>
 
 SelectWithStatics.Group = SelectGroup
 SelectWithStatics.Value = SelectValue

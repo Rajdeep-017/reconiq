@@ -7,21 +7,21 @@ import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, ResponsiveContainer,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts'
 import {
   LayoutDashboard, AlertCircle, FileText,
-  TrendingUp, Coins, CheckCircle
+  TrendingUp, Coins, CheckCircle, RefreshCw, ExternalLink
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-
-
+import { extractErrorMessage } from '@/lib/api'
 
 const KPICard = ({
   title,
@@ -37,33 +37,44 @@ const KPICard = ({
   trend?: { label: string; positive: boolean }
 }) => (
   <Card className="overflow-hidden min-w-[200px]">
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2.5">
+      <div className="flex items-center gap-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </div>
+      <div className="p-2 rounded-lg bg-secondary/50 text-primary">
+        <Icon className="h-4 w-4" />
+      </div>
     </CardHeader>
     <CardContent>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold">{value}</span>
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold tracking-tight">{value}</span>
       </div>
+      {subtitle && <CardDescription className="mt-1">{subtitle}</CardDescription>}
       {trend && (
-        <p className={`text-xs mt-1 ${trend.positive ? 'text-green-600' : 'text-red-600'}`}>
+        <p className={`text-xs mt-1.5 font-medium ${trend.positive ? 'text-green-600' : 'text-amber-600'}`}>
           {trend.label}
         </p>
       )}
-      {subtitle && <CardDescription className="mt-1">{subtitle}</CardDescription>}
     </CardContent>
   </Card>
 )
 
 export function Dashboard() {
-  const { data, isLoading, error } = useDashboard()
-  const [dateRange] = useState('30d')
+  const { data, isLoading, error, refetch } = useDashboard()
+  const [dateRange, setDateRange] = useState('30d')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    setIsRefreshing(false)
+  }
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-8 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[...Array(8)].map((_, i) => (
-          <Card key={i} className="h-32">
+          <Card key={i} className="h-48">
             <CardContent>
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-8 w-full" />
@@ -76,30 +87,76 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" onRetry={refetch} retryLabel="Retry">
         <AlertTitle>Failed to load dashboard</AlertTitle>
-        <AlertDescription>{String(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
       </Alert>
     )
   }
 
-  const metrics = data!
+  if (!data) {
+    return (
+      <Alert variant="info">
+        <AlertTitle>No data available</AlertTitle>
+        <AlertDescription>
+          Dashboard metrics could not be loaded. Please try refreshing the page.
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  const metrics = data
 
   return (
     <div className="space-y-8">
       {/* Page header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Executive Dashboard</h1>
-          <p className="text-muted-subtitle">Financial reconciliation overview for your organization</p>
+          <h1 className="text-2xl font-bold tracking-tight">Financial Overview</h1>
+          <p className="text-muted-foreground">
+            Monitor settlements, reconciliation performance and financial discrepancies.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            {dateRange} <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+        <div className="flex items-center gap-3">
+          <div className="relative min-w-[200px]">
+            <Select
+              value={dateRange}
+              onValueChange={(v) => setDateRange(v as string)}
+            >
+              <Select.Trigger className="w-full min-w-[200px]">
+                <Select.Value placeholder={dateRange} />
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item value="7d">Last 7 days</Select.Item>
+                <Select.Item value="30d">Last 30 days</Select.Item>
+                <Select.Item value="90d">Last 90 days</Select.Item>
+                <Select.Item value="1y">Last year</Select.Item>
+              </Select.Content>
+            </Select>
+          </div>
+          <Button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            {isRefreshing ? (
+              <span className="flex items-center gap-1">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>Refreshing</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Refresh</span>
+              </span>
+            )}
           </Button>
-          <Button className="ml-2">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-            Export
+          <Button variant="outline" size="sm" asChild>
+            <a href="#">
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              <span>Export</span>
+            </a>
           </Button>
         </div>
       </div>
@@ -122,7 +179,7 @@ export function Dashboard() {
           title="Unmatched Orders"
           value={metrics.unmatched_orders.toLocaleString()}
           icon={AlertCircle}
-          trend={{ label: `Needs review`, positive: metrics.unmatched_orders === 0 }}
+          trend={{ label: 'Needs review', positive: metrics.unmatched_orders === 0 }}
         />
         <KPICard
           title="Matching Rate"
@@ -151,15 +208,16 @@ export function Dashboard() {
           trend={{ label: 'Issues detected', positive: metrics.discrepancy_count === 0 }}
         />
         <KPICard
-          title="Verified Claimable"
-          value={formatCurrencyINR(metrics.verified_claimable)}
-          subtitle="Ready for claim submission"
+          title="Pending Claims"
+          value={metrics.active_claims.toLocaleString()}
+          subtitle="Ready for review"
           icon={FileText}
           trend={{ label: 'Recovery potential', positive: Number(metrics.verified_claimable) > 0 }}
         />
       </div>
 
       {/* Analytics Section */}
+      <Separator />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Settlement Trend */}
         <Card className="col-span-1 lg:col-span-2">
@@ -168,7 +226,7 @@ export function Dashboard() {
             <CardDescription>Expected vs received settlement over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full">
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={[
@@ -182,13 +240,16 @@ export function Dashboard() {
                   ]}
                   margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="expected" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="received" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                    itemStyle={{ color: '#172033', fontWeight: 600 }}
+                  />
+                  <Legend verticalAlign="top" align="right" />
+                  <Line type="monotone" dataKey="expected" stroke="#2563eb" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="received" stroke="#16a34a" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -202,7 +263,7 @@ export function Dashboard() {
             <CardDescription>Matched vs unmatched orders over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full">
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={[
@@ -213,13 +274,16 @@ export function Dashboard() {
                   ]}
                   margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="matched" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="unmatched" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                    itemStyle={{ color: '#172033', fontWeight: 600 }}
+                  />
+                  <Legend verticalAlign="top" align="right" />
+                  <Bar dataKey="matched" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="unmatched" fill="#d97706" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -233,7 +297,7 @@ export function Dashboard() {
             <CardDescription>Matching rate by marketplace partner</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full">
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={[
@@ -244,11 +308,14 @@ export function Dashboard() {
                   ]}
                   margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <YAxis label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }} stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                    itemStyle={{ color: '#172033', fontWeight: 600 }}
+                  />
+                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -262,15 +329,15 @@ export function Dashboard() {
             <CardDescription>Issues detected by type</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64 w-full">
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={[
-                      { name: 'Short Payment', value: 45, fill: '#ef4444' },
-                      { name: 'Missing Settlement', value: 28, fill: '#f59e0b' },
-                      { name: 'Freight Overcharge', value: 15, fill: '#0ea5e9' },
-                      { name: 'COD Remittance', value: 12, fill: '#8b5cf6' },
+                      { name: 'Short Payment', value: 45, fill: '#dc2626' },
+                      { name: 'Missing Settlement', value: 28, fill: '#d97706' },
+                      { name: 'Freight Overcharge', value: 15, fill: '#2563eb' },
+                      { name: 'COD Remittance', value: 12, fill: '#7c3aed' },
                     ]}
                     cx="50%"
                     cy="50%"
@@ -279,8 +346,11 @@ export function Dashboard() {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    <Tooltip />
-                    <Legend />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                      itemStyle={{ color: '#172033', fontWeight: 600 }}
+                    />
+                    <Legend verticalAlign="top" align="right" />
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
@@ -294,14 +364,16 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Uploads */}
         <Card className="col-span-1 lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Recent Uploads</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2.5">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">Recent Uploads</CardTitle>
+            </div>
             <Button variant="outline" size="sm" asChild>
               <a href="/uploads">View all</a>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-64">
+            <div className="overflow-auto max-h-[240px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -348,14 +420,16 @@ export function Dashboard() {
 
         {/* Recent Reconciliation Runs */}
         <Card className="col-span-1 lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Recent Reconciliation Runs</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2.5">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">Recent Reconciliation Runs</CardTitle>
+            </div>
             <Button variant="outline" size="sm" asChild>
               <a href="/reconciliation">View all</a>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-64">
+            <div className="overflow-auto max-h-[240px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -404,14 +478,16 @@ export function Dashboard() {
       {/* Pending items row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="col-span-1 lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Pending Match Reviews</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2.5">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">Pending Match Reviews</CardTitle>
+            </div>
             <Button variant="outline" size="sm" asChild>
               <a href="/match-review">Review all</a>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-48">
+            <div className="overflow-auto max-h-[192px]">
               <Table>
                 <TableBody>
                   <TableRow>
@@ -437,14 +513,16 @@ export function Dashboard() {
         </Card>
 
         <Card className="col-span-1 lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Pending Claims</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2.5">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">Pending Claims</CardTitle>
+            </div>
             <Button variant="outline" size="sm" asChild>
               <a href="/claims">View all</a>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-48">
+            <div className="overflow-auto max-h-[192px]">
               <Table>
                 <TableBody>
                   <TableRow>

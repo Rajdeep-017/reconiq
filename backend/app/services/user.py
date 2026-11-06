@@ -1,5 +1,4 @@
 """User management service."""
-
 from __future__ import annotations
 
 from uuid import UUID
@@ -18,19 +17,23 @@ class UserService:
     def __init__(self, db: Session):
         self.repo = UserRepository(db)
 
-    def get_user(self, user_id: UUID) -> User:
-        """Get a single user by ID."""
-        user = self.repo.get_by_id(user_id)
+    def get_user(self, user_id: UUID, org_id: UUID | None = None) -> User:
+        """Get a single user by ID, optionally scoped to an organization."""
+        user = self.repo.get_by_id(user_id, org_id=org_id)
         if user is None:
             raise NotFoundException(f"User {user_id} not found")
         return user
 
     def list_users(
-        self, *, page: int = 1, page_size: int = 50
+        self,
+        org_id: UUID | None = None,
+        *,
+        page: int = 1,
+        page_size: int = 50,
     ) -> tuple[list[User], int]:
-        """List users with pagination."""
+        """List users with pagination, optionally scoped to an organization."""
         offset = (page - 1) * page_size
-        return self.repo.list_users(offset=offset, limit=page_size)
+        return self.repo.list_users(org_id=org_id, offset=offset, limit=page_size)
 
     def update_profile(
         self, user: User, data: UserUpdateRequest
@@ -73,4 +76,3 @@ class UserService:
         target = self.get_user(target_user_id)
         target.is_active = False
         return self.repo.update(target)
-

@@ -1,12 +1,13 @@
-"""Reconciliation API endpoints."""
+"""Reconciliation API endpoints — organization-scoped."""
 from __future__ import annotations
 from uuid import UUID
 from decimal import Decimal
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_organization, get_current_user
 from app.database.connection import get_db
+from app.models.organization import Organization
 from app.models.user import User
 from app.modules.reconciliation.service import ReconciliationService
 
@@ -50,30 +51,65 @@ class ReconResultResponse(BaseModel):
 
 
 @router.post("", response_model=ReconRunResponse, status_code=201)
-def create_run(data: ReconRunCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_run(
+    data: ReconRunCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_org: Organization = Depends(get_current_organization),
+):
     run = ReconciliationService(db).create_run(
-        data.name, data.recon_type, data.source_upload_id, data.target_upload_id, user.id)
+        data.name, data.recon_type, data.source_upload_id, data.target_upload_id,
+        user.id, org_id=current_org.id,
+    )
     return ReconRunResponse.model_validate(run)
 
 
 @router.post("/{run_id}/execute", response_model=ReconRunResponse)
-def execute_run(run_id: UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def execute_run(
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
+):
+    run = ReconciliationService(db).get_run(run_id)
+    if run.org_id != current_org.id:
+        from app.core.exceptions import ForbiddenException
+        raise ForbiddenException("Access denied: run belongs to a different organization")
     return ReconRunResponse.model_validate(
-        ReconciliationService(db).execute_settlement_reconciliation(run_id))
+        ReconciliationService(db).execute_settlement_reconciliation(run_id)
+    )
 
 
 @router.get("", response_model=list[ReconRunResponse])
-def list_runs(page: int = Query(1, ge=1), db: Session = Depends(get_db), _=Depends(get_current_user)):
-    runs, _ = ReconciliationService(db).list_runs(page)
+def list_runs(
+    page: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
+):
+    runs, _ = ReconciliationService(db).list_runs(page, org_id=current_org.id)
     return [ReconRunResponse.model_validate(r) for r in runs]
 
 
 @router.get("/{run_id}", response_model=ReconRunResponse)
-def get_run(run_id: UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return ReconRunResponse.model_validate(ReconciliationService(db).get_run(run_id))
+def get_run(
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
+):
+    run = ReconciliationService(db).get_run(run_id)
+    if run.org_id != current_org.id:
+        from app.core.exceptions import ForbiddenException
+        raise ForbiddenException("Access denied: run belongs to a different organization")
+    return ReconRunResponse.model_validate(run)
 
 
 @router.get("/{run_id}/results", response_model=list[ReconResultResponse])
-def get_results(run_id: UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_results(
+    run_id: UUID,
+    db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
+):
+    run = ReconciliationService(db).get_run(run_id)
+    if run.org_id != current_org.id:
+        from app.core.exceptions import ForbiddenException
+        raise ForbiddenException("Access denied: run belongs to a different organization")
     return [ReconResultResponse.model_validate(r) for r in ReconciliationService(db).get_results(run_id)]
-

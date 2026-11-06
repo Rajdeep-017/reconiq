@@ -1,4 +1,4 @@
-"""Claims API."""
+"""Claims API — organization-scoped."""
 from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
@@ -6,9 +6,10 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_organization, get_current_user
 from app.core.exceptions import NotFoundException, ForbiddenException
 from app.database.connection import get_db
+from app.models.organization import Organization
 from app.models.user import User, UserRole
 from app.models.discrepancy import Claim, ClaimStatus, Discrepancy
 
@@ -49,16 +50,24 @@ def create_claim(
     data: ClaimCreateRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    current_org: Organization = Depends(get_current_organization),
 ):
     disc = db.query(Discrepancy).filter(Discrepancy.id == data.discrepancy_id).first()
     if not disc:
         raise NotFoundException("Discrepancy not found")
+    if disc.org_id != current_org.id:
+        raise ForbiddenException("Access denied: discrepancy belongs to a different organization")
 
     claim = Claim(
-        discrepancy_id=disc.id, partner_id=disc.partner_id,
-        created_by_id=user.id, claim_reference=_generate_claim_ref(),
-        claim_type=data.claim_type, claim_amount=abs(disc.difference_amount),
-        notes=data.notes, status=ClaimStatus.DRAFT,
+        org_id=current_org.id,
+        discrepancy_id=disc.id,
+        partner_id=disc.partner_id,
+        created_by_id=user.id,
+        claim_reference=_generate_claim_ref(),
+        claim_type=data.claim_type,
+        claim_amount=abs(disc.difference_amount),
+        notes=data.notes,
+        status=ClaimStatus.DRAFT,
     )
     db.add(claim)
     db.commit()
@@ -69,24 +78,31 @@ def create_claim(
 @router.get("", response_model=list[ClaimResponse])
 def list_claims(
     status: str | None = None,
-    page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db), _=Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
 ):
-    q = db.query(Claim).order_by(Claim.created_at.desc())
+    q = db.query(Claim).filter(Claim.org_id == current_org.id)
     if status:
         q = q.filter(Claim.status == ClaimStatus(status))
-    items = q.offset((page - 1) * page_size).limit(page_size).all()
+    items = q.order_by(Claim.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return [ClaimResponse.model_validate(c) for c in items]
 
 
 @router.patch("/{claim_id}", response_model=ClaimResponse)
 def update_claim(
-    claim_id: uuid.UUID, data: ClaimUpdateRequest,
-    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    claim_id: uuid.UUID,
+    data: ClaimUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_org: Organization = Depends(get_current_organization),
 ):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise NotFoundException("Claim not found")
+    if claim.org_id != current_org.id:
+        raise ForbiddenException("Access denied: claim belongs to a different organization")
 
     # Only co-founders can approve/close claims
     if data.status in ("resolved", "closed") and user.role != UserRole.FINANCE_COFOUNDER:
@@ -107,4 +123,3 @@ def update_claim(
     db.commit()
     db.refresh(claim)
     return ClaimResponse.model_validate(claim)
-

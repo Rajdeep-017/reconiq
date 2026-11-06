@@ -54,6 +54,9 @@ class Upload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "uploads"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     uploaded_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -92,6 +95,9 @@ class ImportRow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "import_rows"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     upload_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=False, index=True
     )

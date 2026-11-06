@@ -1,15 +1,13 @@
-"""User management endpoints."""
-
+"""User management endpoints — organization-scoped."""
 from __future__ import annotations
 
 from uuid import UUID
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-
-from app.core.dependencies import get_current_user, require_permission
+from app.core.dependencies import get_current_organization, get_current_user, require_permission
 from app.core.permissions import Permission
 from app.database.connection import get_db
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.common import SuccessResponse
 from app.schemas.user import (
@@ -26,17 +24,18 @@ router = APIRouter(prefix="/users", tags=["Users"])
 @router.get(
     "",
     response_model=UserListResponse,
-    summary="List all users (admin)",
+    summary="List users in organization",
     dependencies=[Depends(require_permission(Permission.MANAGE_USERS))],
 )
 def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
 ) -> UserListResponse:
-    """List all active users with pagination. Requires MANAGE_USERS permission."""
+    """List users in the current organization. Requires MANAGE_USERS permission."""
     service = UserService(db)
-    users, total = service.list_users(page=page, page_size=page_size)
+    users, total = service.list_users(org_id=current_org.id, page=page, page_size=page_size)
     return UserListResponse(
         users=[UserResponse.model_validate(u) for u in users],
         total=total,
@@ -54,10 +53,11 @@ def list_users(
 def get_user(
     user_id: UUID,
     db: Session = Depends(get_db),
+    current_org: Organization = Depends(get_current_organization),
 ) -> UserResponse:
-    """Get a specific user by ID. Requires MANAGE_USERS permission."""
+    """Get a user in the current organization. Requires MANAGE_USERS permission."""
     service = UserService(db)
-    user = service.get_user(user_id)
+    user = service.get_user(user_id, org_id=current_org.id)
     return UserResponse.model_validate(user)
 
 
@@ -108,4 +108,3 @@ def deactivate_user(
     service = UserService(db)
     service.deactivate_user(user_id, current_user)
     return SuccessResponse(message="User deactivated successfully")
-

@@ -17,6 +17,9 @@ class AuditLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "audit_logs"
 
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
@@ -29,4 +32,5 @@ class AuditLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[org_id])
 

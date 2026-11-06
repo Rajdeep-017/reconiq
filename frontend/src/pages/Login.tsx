@@ -75,6 +75,7 @@ export function Login() {
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="name@company.com"
                   {...form.register('email')}
                   className={cn(
@@ -91,6 +92,7 @@ export function Login() {
                 <Input
                   id="password"
                   type="password"
+                  autoComplete="current-password"
                   placeholder="••••••••"
                   {...form.register('password')}
                   className={cn(
