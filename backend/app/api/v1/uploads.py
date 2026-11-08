@@ -7,6 +7,7 @@ from app.config import Settings, get_settings
 from app.core.dependencies import get_current_organization, get_current_user
 from app.database.connection import get_db
 from app.models.organization import Organization
+from app.models.partner import Partner
 from app.models.user import User
 from app.modules.ingestion.service import IngestionService
 from app.schemas.upload import UploadResponse, UploadListResponse
@@ -18,21 +19,35 @@ router = APIRouter(prefix="/uploads", tags=["Uploads"])
 async def upload_file(
     file: UploadFile = File(...),
     document_type: str = Form(...),
-    partner_id: str | None = Form(None),
+    partner_id: UUID | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_org: Organization = Depends(get_current_organization),
     settings: Settings = Depends(get_settings),
 ):
+    # Validate partner belongs to the current organization (if provided)
+    if partner_id is not None:
+        partner = (
+            db.query(Partner)
+            .filter(Partner.id == partner_id)
+            .filter(Partner.org_id == current_org.id)
+            .first()
+        )
+        if partner is None:
+            from app.core.exceptions import NotFoundException
+
+            raise NotFoundException(
+                f"Partner {partner_id} not found in your organization"
+            )
+
     content = await file.read()
-    pid = UUID(partner_id) if partner_id else None
     svc = IngestionService(db, settings)
     upload = svc.upload_file(
         content,
         file.filename or "unknown",
         document_type,
         current_user.id,
-        pid,
+        partner_id,
         org_id=current_org.id,
     )
     return UploadResponse.model_validate(upload)

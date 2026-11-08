@@ -126,14 +126,10 @@ export function UploadReports() {
     }, 500)
 
     try {
-      // Only send partner_id if it's a valid UUID (backend does UUID(partner_id))
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      const partnerUuid = uuidRegex.test(partnerId) ? partnerId : undefined
-
       const result = await uploadMutation.mutateAsync({
         file: selectedFile,
         document_type: documentType,
-        partner_id: partnerUuid,
+        partner_id: partnerId || undefined,
       })
 
       setUploadStage('processing')
@@ -146,7 +142,18 @@ export function UploadReports() {
         navigate(`/uploads/${result.id}/mapping`)
       }, 1000)
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Upload failed. Please try again.'
+      const e = err as any
+      const data = e?.response?.data
+      let msg = 'Upload failed. Please try again.'
+      if (data?.detail) {
+        if (Array.isArray(data.detail)) {
+          msg = data.detail.map((d: any) => d.msg).join('; ')
+        } else {
+          msg = String(data.detail)
+        }
+      } else if (data?.message) {
+        msg = data.message
+      }
       setError(msg)
       setUploadStage('error')
       setUploadProgress(0)
@@ -215,10 +222,11 @@ export function UploadReports() {
                       {(partners || []).map((p) => (
                         <Select.Item key={p.id} value={p.id}>{p.name}</Select.Item>
                       ))}
-                      <Select.Item value="amazon">Amazon</Select.Item>
-                      <Select.Item value="flipkart">Flipkart</Select.Item>
-                      <Select.Item value="myntra">Myntra</Select.Item>
-                      <Select.Item value="meesho">Meesho</Select.Item>
+                      {(partners || []).length === 0 && (
+                        <Select.Item value="" disabled>
+                          No partners available
+                        </Select.Item>
+                      )}
                     </Select.Content>
                   </Select>
                 </div>
