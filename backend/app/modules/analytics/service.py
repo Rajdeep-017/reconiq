@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func, and_, extract, case
 from sqlalchemy.orm import Session
 
 from app.models.discrepancy import Discrepancy, DiscrepancyStatus, Claim
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.reconciliation import ReconciliationResult, MatchStatus, ReconciliationRun
 from app.models.settlement import Settlement, CODRemittance
 from app.models.freight import FreightRecord
@@ -50,13 +50,13 @@ class AnalyticsService:
             self.db.query(
                 func.date(ReconciliationResult.created_at).label("name"),
                 func.sum(
-                    func.case(
+                    case(
                         (ReconciliationResult.match_status == MatchStatus.MATCHED, 1),
                         else_=0,
                     )
                 ).label("matched"),
                 func.sum(
-                    func.case(
+                    case(
                         (ReconciliationResult.match_status == MatchStatus.UNMATCHED, 1),
                         else_=0,
                     )
@@ -78,7 +78,7 @@ class AnalyticsService:
                 Order.partner_id.label("partner_id"),
                 func.count(Order.id).label("total"),
                 func.sum(
-                    func.case(
+                    case(
                         (ReconciliationResult.match_status == MatchStatus.MATCHED, 1),
                         else_=0,
                     )
@@ -146,15 +146,16 @@ class AnalyticsService:
 
     def return_refund(self, org_id: str | None = None):
         """Return/refund discrepancy analysis."""
+        status_case = case(
+            (Order.status == OrderStatus.RETURNED, "processed"),
+            else_="pending",
+        ).label("name")
         q = (
             self.db.query(
-                func.case(
-                    (Order.status == "returned", "processed"),
-                    else_="pending",
-                ).label("name"),
+                status_case,
                 func.count(Order.id).label("value"),
             )
-            .group_by(func.case((Order.status == "returned", "processed"), else_="pending"))
+            .group_by(status_case)
         )
         if org_id:
             q = q.filter(Order.org_id == org_id)
@@ -179,17 +180,18 @@ class AnalyticsService:
 
     def month_wise(self, org_id: str | None = None):
         """Month-wise reconciliation performance."""
+        month_expr = func.to_char(ReconciliationRun.created_at, 'Mon')
         q = (
             self.db.query(
-                func.to_char(ReconciliationRun.created_at, 'Mon').label("name"),
+                month_expr.label("name"),
                 func.sum(
-                    func.case(
+                    case(
                         (ReconciliationResult.match_status == MatchStatus.MATCHED, 1),
                         else_=0,
                     )
                 ).label("matched"),
                 func.sum(
-                    func.case(
+                    case(
                         (ReconciliationResult.match_status == MatchStatus.UNMATCHED, 1),
                         else_=0,
                     )
@@ -199,7 +201,7 @@ class AnalyticsService:
                 ReconciliationResult,
                 ReconciliationResult.run_id == ReconciliationRun.id,
             )
-            .group_by(func.to_char(ReconciliationRun.created_at, 'Mon'))
+            .group_by(month_expr)
         )
         if org_id:
             q = q.filter(ReconciliationRun.org_id == org_id)

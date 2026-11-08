@@ -50,13 +50,17 @@ export interface MonthWisePoint {
 }
 
 export const analyticsService = {
-  settlementTrends: async (): Promise<SettlementTrendPoint[]> => {
-    const res = await api.client.get<SettlementTrendPoint[]>('/analytics/settlement-trends')
+  settlementTrends: async (params?: { days?: number }): Promise<SettlementTrendPoint[]> => {
+    const res = await api.client.get<SettlementTrendPoint[]>('/analytics/settlement-trends', {
+      params,
+    })
     return res.data
   },
 
-  matchingTrends: async (): Promise<MatchingTrendPoint[]> => {
-    const res = await api.client.get<MatchingTrendPoint[]>('/analytics/matching-trends')
+  matchingTrends: async (params?: { weeks?: number }): Promise<MatchingTrendPoint[]> => {
+    const res = await api.client.get<MatchingTrendPoint[]>('/analytics/matching-trends', {
+      params,
+    })
     return res.data
   },
 
@@ -75,8 +79,10 @@ export const analyticsService = {
     return res.data
   },
 
-  codRemittance: async (): Promise<CODRemittancePoint[]> => {
-    const res = await api.client.get<CODRemittancePoint[]>('/analytics/cod-remittance')
+  codRemittance: async (params?: { days?: number }): Promise<CODRemittancePoint[]> => {
+    const res = await api.client.get<CODRemittancePoint[]>('/analytics/cod-remittance', {
+      params,
+    })
     return res.data
   },
 
@@ -85,8 +91,10 @@ export const analyticsService = {
     return res.data
   },
 
-  claimRecovery: async (): Promise<ClaimRecoveryPoint[]> => {
-    const res = await api.client.get<ClaimRecoveryPoint[]>('/analytics/claim-recovery')
+  claimRecovery: async (params?: { days?: number }): Promise<ClaimRecoveryPoint[]> => {
+    const res = await api.client.get<ClaimRecoveryPoint[]>('/analytics/claim-recovery', {
+      params,
+    })
     return res.data
   },
 

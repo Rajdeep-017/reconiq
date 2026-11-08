@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { analyticsService } from '@/services/analytics'
 
-export function useSettlementTrends() {
+export function useSettlementTrends(params?: { days?: number }) {
   return useQuery({
-    queryKey: ['analytics', 'settlement-trends'],
-    queryFn: () => analyticsService.settlementTrends(),
+    queryKey: ['analytics', 'settlement-trends', params],
+    queryFn: () => analyticsService.settlementTrends(params),
   })
 }
 
-export function useMatchingTrends() {
+export function useMatchingTrends(params?: { weeks?: number }) {
   return useQuery({
-    queryKey: ['analytics', 'matching-trends'],
-    queryFn: () => analyticsService.matchingTrends(),
+    queryKey: ['analytics', 'matching-trends', params],
+    queryFn: () => analyticsService.matchingTrends(params),
   })
 }
 
@@ -36,10 +36,10 @@ export function useFreightOvercharge() {
   })
 }
 
-export function useCODRemittance() {
+export function useCODRemittance(params?: { days?: number }) {
   return useQuery({
-    queryKey: ['analytics', 'cod-remittance'],
-    queryFn: () => analyticsService.codRemittance(),
+    queryKey: ['analytics', 'cod-remittance', params],
+    queryFn: () => analyticsService.codRemittance(params),
   })
 }
 
@@ -50,10 +50,10 @@ export function useReturnRefund() {
   })
 }
 
-export function useClaimRecovery() {
+export function useClaimRecovery(params?: { days?: number }) {
   return useQuery({
-    queryKey: ['analytics', 'claim-recovery'],
-    queryFn: () => analyticsService.claimRecovery(),
+    queryKey: ['analytics', 'claim-recovery', params],
+    queryFn: () => analyticsService.claimRecovery(params),
   })
 }
 

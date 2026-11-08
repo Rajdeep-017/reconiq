@@ -1,5 +1,6 @@
 """Discrepancies API — organization-scoped."""
 from __future__ import annotations
+from datetime import datetime
 from uuid import UUID
 from decimal import Decimal
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ class DiscrepancyResponse(BaseModel):
     actual_amount: Decimal
     difference_amount: Decimal
     explanation: str | None
+    created_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle
+  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -28,6 +28,10 @@ const CLAIM_STATUSES = [
 export function ClaimsManagement() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [discrepancyId, setDiscrepancyId] = useState('')
+  const [claimType, setClaimType] = useState('')
+  const [claimNotes, setClaimNotes] = useState('')
 
   const { data: claims = [], isLoading, error } = useClaims({
     page: 1,
@@ -35,6 +39,24 @@ export function ClaimsManagement() {
   })
   const createMutation = useCreateClaim()
   const updateMutation = useUpdateClaim()
+
+  const handleCreateClaim = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await createMutation.mutateAsync({
+        discrepancy_id: discrepancyId,
+        claim_type: claimType,
+        notes: claimNotes || undefined,
+      })
+      setShowCreateDialog(false)
+      setDiscrepancyId('')
+      setClaimType('')
+      setClaimNotes('')
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.detail || 'Failed to create claim.'
+      alert(msg)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -134,7 +156,7 @@ export function ClaimsManagement() {
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-1" /> Export Evidence
           </Button>
-          <Button onClick={() => alert('Create claim modal would open here')} disabled={createMutation.isPending}>
+          <Button onClick={() => setShowCreateDialog(true)} disabled={createMutation.isPending}>
             <Plus className="h-4 w-4 mr-2" /> Create Claim
           </Button>
         </div>
@@ -340,6 +362,66 @@ export function ClaimsManagement() {
           approve or close claims automatically.
         </AlertDescription>
       </Alert>
+
+      {showCreateDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateDialog(false)} />
+          <Card className="w-full max-w-md m-4">
+            <CardHeader>
+              <CardTitle>Create Claim</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form onSubmit={handleCreateClaim}>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="create_claim_discrepancy_id">Discrepancy ID</Label>
+                    <Input
+                      id="create_claim_discrepancy_id"
+                      placeholder="e.g. DSC-2024-001"
+                      value={discrepancyId}
+                      onChange={(e) => setDiscrepancyId(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="create_claim_type">Claim Type</Label>
+                    <Select
+                      value={claimType}
+                      onValueChange={(v) => setClaimType(v as string)}
+                    >
+                      <Select.Trigger className="w-full">
+                        <Select.Value placeholder="Select claim type…" />
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value="short_payment">Short Payment</Select.Item>
+                        <Select.Item value="missing_settlement">Missing Settlement</Select.Item>
+                        <Select.Item value="freight_overcharge">Freight Overcharge</Select.Item>
+                        <Select.Item value="cod_remittance">COD Remittance</Select.Item>
+                        <Select.Item value="return_refund">Return/Refund</Select.Item>
+                        <Select.Item value="duplicate_deduction">Duplicate Deduction</Select.Item>
+                      </Select.Content>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="create_claim_notes">Notes</Label>
+                    <Input
+                      id="create_claim_notes"
+                      placeholder="Optional notes"
+                      value={claimNotes}
+                      onChange={(e) => setClaimNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <CardFooter className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+                  <Button type="submit" disabled={createMutation.isPending || !discrepancyId || !claimType}>
+                    {createMutation.isPending ? 'Creating…' : 'Create Claim'}
+                  </Button>
+                </CardFooter>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

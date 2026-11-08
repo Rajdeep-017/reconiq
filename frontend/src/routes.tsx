@@ -31,6 +31,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'dashboard', element: <Dashboard /> },
       { path: 'uploads', element: <UploadReports /> },
+      { path: 'uploads/:upload_id/mapping', element: <MappingReview /> },
       { path: 'mapping', element: <MappingReview /> },
       { path: 'reconciliation', element: <ReconciliationWorkspace /> },
       { path: 'match-review', element: <MatchReview /> },

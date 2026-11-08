@@ -2,6 +2,12 @@
 
 import { useState } from 'react'
 import { useDashboard } from '@/hooks/useDashboard'
+import {
+  useSettlementTrends,
+  useMatchingTrends,
+  usePartnerPerformance,
+  usePartnerDiscrepancies,
+} from '@/hooks/useAnalytics'
 import { formatCurrencyINR } from '@/lib/utils'
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
@@ -62,15 +68,46 @@ const KPICard = ({
 export function Dashboard() {
   const { data, isLoading, error, refetch } = useDashboard()
   const [dateRange, setDateRange] = useState('30d')
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    setIsRefreshing(false)
+  const daysForRange = (range: string) => {
+    switch (range) {
+      case '7d':
+        return 7
+      case '90d':
+        return 90
+      case '1y':
+        return 365
+      default:
+        return 30
+    }
   }
 
-  if (isLoading) {
+  const weeksForRange = (range: string) => {
+    switch (range) {
+      case '7d':
+        return 1
+      case '90d':
+        return 13
+      case '1y':
+        return 52
+      default:
+        return 4
+    }
+  }
+
+  const { data: settlementTrends, isLoading: settlementLoading } = useSettlementTrends({
+    days: daysForRange(dateRange),
+  })
+  const { data: matchingTrends, isLoading: matchingLoading } = useMatchingTrends({
+    weeks: weeksForRange(dateRange),
+  })
+  const { data: partnerPerformance, isLoading: partnerLoading } = usePartnerPerformance()
+  const { data: partnerDiscrepancies, isLoading: discrepanciesLoading } = usePartnerDiscrepancies()
+
+  const analyticsLoading =
+    settlementLoading || matchingLoading || partnerLoading || discrepanciesLoading
+
+  if (isLoading || analyticsLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[...Array(8)].map((_, i) => (
@@ -135,22 +172,14 @@ export function Dashboard() {
             </Select>
           </div>
           <Button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
+            onClick={() => refetch()}
             size="sm"
             className="flex items-center gap-2"
           >
-            {isRefreshing ? (
-              <span className="flex items-center gap-1">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                <span>Refreshing</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Refresh</span>
-              </span>
-            )}
+            <span className="flex items-center gap-1">
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Refresh</span>
+            </span>
           </Button>
           <Button variant="outline" size="sm" asChild>
             <a href="#">
@@ -227,31 +256,29 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={[
-                    { name: 'Mon', expected: 125000, received: 118000 },
-                    { name: 'Tue', expected: 142000, received: 139000 },
-                    { name: 'Wed', expected: 158000, received: 155000 },
-                    { name: 'Thu', expected: 175000, received: 168000 },
-                    { name: 'Fri', expected: 192000, received: 185000 },
-                    { name: 'Sat', expected: 210000, received: 205000 },
-                    { name: 'Sun', expected: 185000, received: 180000 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                    itemStyle={{ color: '#172033', fontWeight: 600 }}
-                  />
-                  <Legend verticalAlign="top" align="right" />
-                  <Line type="monotone" dataKey="expected" stroke="#2563eb" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="received" stroke="#16a34a" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+              {settlementTrends && settlementTrends.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={settlementTrends}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                      itemStyle={{ color: '#172033', fontWeight: 600 }}
+                    />
+                    <Legend verticalAlign="top" align="right" />
+                    <Line type="monotone" dataKey="expected" stroke="#2563eb" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="received" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                  No settlement data for the selected range.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -264,28 +291,29 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Week 1', matched: 85, unmatched: 15 },
-                    { name: 'Week 2', matched: 92, unmatched: 8 },
-                    { name: 'Week 3', matched: 88, unmatched: 12 },
-                    { name: 'Week 4', matched: 94, unmatched: 6 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                    itemStyle={{ color: '#172033', fontWeight: 600 }}
-                  />
-                  <Legend verticalAlign="top" align="right" />
-                  <Bar dataKey="matched" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="unmatched" fill="#d97706" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {matchingTrends && matchingTrends.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={matchingTrends}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <YAxis stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                      itemStyle={{ color: '#172033', fontWeight: 600 }}
+                    />
+                    <Legend verticalAlign="top" align="right" />
+                    <Bar dataKey="matched" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="unmatched" fill="#d97706" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                  No matching data for the selected range.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -298,26 +326,27 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Amazon', value: 94 },
-                    { name: 'Flipkart', value: 87 },
-                    { name: 'Myntra', value: 91 },
-                    { name: 'Meesho', value: 82 },
-                  ]}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <YAxis label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }} stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                    itemStyle={{ color: '#172033', fontWeight: 600 }}
-                  />
-                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {partnerPerformance && partnerPerformance.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={partnerPerformance}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <YAxis label={{ value: 'Match Rate (%)', angle: -90, position: 'insideLeft' }} stroke="#e2e8f0" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                      itemStyle={{ color: '#172033', fontWeight: 600 }}
+                    />
+                    <Bar dataKey="rate" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                  No partner performance data available.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -330,30 +359,31 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Short Payment', value: 45, fill: '#dc2626' },
-                      { name: 'Missing Settlement', value: 28, fill: '#d97706' },
-                      { name: 'Freight Overcharge', value: 15, fill: '#2563eb' },
-                      { name: 'COD Remittance', value: 12, fill: '#7c3aed' },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                      itemStyle={{ color: '#172033', fontWeight: 600 }}
-                    />
-                    <Legend verticalAlign="top" align="right" />
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              {partnerDiscrepancies && partnerDiscrepancies.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={partnerDiscrepancies}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                        itemStyle={{ color: '#172033', fontWeight: 600 }}
+                      />
+                      <Legend verticalAlign="top" align="right" />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                  No discrepancy data available.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

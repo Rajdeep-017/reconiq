@@ -26,7 +26,7 @@ const ACCEPTED_TYPES = ['text/csv', 'application/vnd.openxmlformats-officedocume
 const DOCUMENT_TYPES = [
   { value: 'orders', label: 'Orders' },
   { value: 'settlements', label: 'Settlements' },
-  { value: 'freight', label: 'Freight Invoices' },
+  { value: 'freight_invoices', label: 'Freight Invoices' },
   { value: 'cod_remittances', label: 'COD Remittances' },
   { value: 'returns', label: 'Returns' },
 ]
@@ -46,7 +46,7 @@ export function UploadReports() {
   const uploadMutation = useUploadFile()
 
   const isUploading = uploadMutation.isPending
-  const isDisabled = !selectedFile || !partnerId || !documentType || isUploading || uploadStage === 'uploading'
+  const isDisabled = !selectedFile || !documentType || isUploading || uploadStage === 'uploading'
 
   const validateFile = useCallback((file: File): { valid: boolean; errors: string[]; warnings: string[] } => {
     const errors: string[] = []
@@ -126,10 +126,14 @@ export function UploadReports() {
     }, 500)
 
     try {
+      // Only send partner_id if it's a valid UUID (backend does UUID(partner_id))
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      const partnerUuid = uuidRegex.test(partnerId) ? partnerId : undefined
+
       const result = await uploadMutation.mutateAsync({
         file: selectedFile,
         document_type: documentType,
-        partner_id: partnerId || undefined,
+        partner_id: partnerUuid,
       })
 
       setUploadStage('processing')

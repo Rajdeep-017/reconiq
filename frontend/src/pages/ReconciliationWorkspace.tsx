@@ -1,8 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useReconciliationRuns, useCreateReconciliationRun } from '@/hooks/useReconciliation'
+import { useQueries } from '@tanstack/react-query'
+import {
+  useReconciliationRuns,
+  useCreateReconciliationRun,
+} from '@/hooks/useReconciliation'
+import { useUploads } from '@/hooks/useUploads'
 import { formatCurrencyINR } from '@/lib/utils'
+import { reconciliationService } from '@/services/reconciliation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,6 +39,22 @@ export function ReconciliationWorkspace() {
 
   const { data: runs, isLoading, error, refetch } = useReconciliationRuns(1)
   const createMutation = useCreateReconciliationRun()
+  const { data: uploadsData, isLoading: uploadsLoading } = useUploads(1, 100)
+  const uploads = uploadsData?.uploads || []
+
+  const resultsQueries = useQueries({
+    queries: (runs || []).map((run) => ({
+      queryKey: ['reconciliation-results', run.id],
+      queryFn: () => reconciliationService.getResults(run.id),
+      enabled: !!run.id,
+    })),
+  })
+
+  const allResults = resultsQueries
+    .flatMap((q) => q.data || [])
+    .slice(0, 10)
+
+  const resultsLoading = resultsQueries.some((q) => q.isLoading)
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [runName, setRunName] = useState('')
@@ -61,7 +83,7 @@ export function ReconciliationWorkspace() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || resultsLoading || uploadsLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -240,85 +262,77 @@ export function ReconciliationWorkspace() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(runs?.length ? runs : []).flatMap((_run, rIdx) => [
-                  {
-                    id: `row-${rIdx}-1`,
-                    orderRef: 'ORD-2024-1128',
-                    partner: 'Amazon',
-                    orderValue: '₹2,499.00',
-                    expected: '₹2,499.00',
-                    actual: '₹2,499.00',
-                    diff: '₹0.00',
-                    method: 'Exact',
-                    confidence: 1.0,
-                    status: 'Matched',
-                  },
-                  {
-                    id: `row-${rIdx}-2`,
-                    orderRef: 'ORD-2024-1135',
-                    partner: 'Flipkart',
-                    orderValue: '₹1,850.00',
-                    expected: '₹1,850.00',
-                    actual: '₹1,750.00',
-                    diff: '₹100.00',
-                    method: 'Fuzzy',
-                    confidence: 0.85,
-                    status: 'Partial',
-                  },
-                  {
-                    id: `row-${rIdx}-3`,
-                    orderRef: 'ORD-2024-1142',
-                    partner: 'Myntra',
-                    orderValue: '₹3,200.00',
-                    expected: '₹3,200.00',
-                    actual: '₹0.00',
-                    diff: '₹3,200.00',
-                    method: 'Unmatched',
-                    confidence: 0,
-                    status: 'Unmatched',
-                  },
-                ]).slice(0, 10).map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium truncate-title" title={row.orderRef}>
-                      {row.orderRef}
-                    </TableCell>
-                    <TableCell>{row.partner}</TableCell>
-                    <TableCell className="text-right currency-cell">{row.orderValue}</TableCell>
-                    <TableCell className="text-right currency-cell">{row.expected}</TableCell>
-                    <TableCell className="text-right currency-cell">{row.actual}</TableCell>
-                    <TableCell className={`text-right font-medium ${parseFloat(row.diff.replace(/[^0-9.-]/g, '')) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {row.diff}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{row.method}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={row.confidence >= 0.8 ? 'bg-green-100 text-green-800 border-green-200' : row.confidence >= 0.5 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-red-100 text-red-800 border-red-200'}>
-                        {(row.confidence * 100).toFixed(0)}%
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={row.status === 'Matched' ? 'success' : row.status === 'Partial' ? 'warning' : 'destructive'}>
-                        {row.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="sm" asChild>
-                          <a href="#">View</a>
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                          <a href="#">Review</a>
-                        </Button>
-                      </div>
+                {allResults.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                      No match results available. Run a reconciliation to see results.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  allResults.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium truncate-title" title={row.order_reference}>
+                        {row.order_reference}
+                      </TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell className="text-right currency-cell">
+                        {formatCurrencyINR(row.expected_amount || 0)}
+                      </TableCell>
+                      <TableCell className="text-right currency-cell">
+                        {formatCurrencyINR(row.actual_amount || 0)}
+                      </TableCell>
+                      <TableCell className="text-right currency-cell">
+                        {formatCurrencyINR(Number(row.expected_amount || 0) - Number(row.actual_amount || 0))}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{String(row.match_method || '-').replace('_', ' ')}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            Number(row.confidence_score || 0) >= 0.8
+                              ? 'bg-green-100 text-green-800 border-green-200'
+                              : Number(row.confidence_score || 0) >= 0.5
+                                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                : 'bg-red-100 text-red-800 border-red-200'
+                          }
+                        >
+                          {Math.round(Number(row.confidence_score || 0) * 100)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            row.match_status === 'matched'
+                              ? 'success'
+                              : row.match_status === 'partial'
+                                ? 'warning'
+                                : 'destructive'
+                          }
+                        >
+                          {String(row.match_status).replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" asChild>
+                            <a href="#">View</a>
+                          </Button>
+                          <Button variant="outline" size="sm" asChild>
+                            <a href="#">Review</a>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted-foreground">Showing 1–10 of 42 records</span>
+            <span className="text-sm text-muted-foreground">
+              Showing {allResults.length} records
+            </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled>Previous</Button>
               <Button variant="outline" size="sm">Next</Button>
@@ -368,8 +382,16 @@ export function ReconciliationWorkspace() {
                           <Select.Value placeholder="Select source file…" />
                         </Select.Trigger>
                         <Select.Content>
-                          <Select.Item value="upload-1">Amazon Orders Dec 2024</Select.Item>
-                          <Select.Item value="upload-2">Flipkart Orders Dec 2024</Select.Item>
+                          {uploads.map((u) => (
+                            <Select.Item key={u.id} value={u.id}>
+                              {u.original_filename}
+                            </Select.Item>
+                          ))}
+                          {uploads.length === 0 && (
+                            <Select.Item value="" disabled>
+                              No uploads available
+                            </Select.Item>
+                          )}
                         </Select.Content>
                       </Select>
                     </div>
@@ -380,8 +402,16 @@ export function ReconciliationWorkspace() {
                           <Select.Value placeholder="Select target file…" />
                         </Select.Trigger>
                         <Select.Content>
-                          <Select.Item value="upload-3">Amazon Settlements Dec 2024</Select.Item>
-                          <Select.Item value="upload-4">Flipkart Settlements Dec 2024</Select.Item>
+                          {uploads.map((u) => (
+                            <Select.Item key={u.id} value={u.id}>
+                              {u.original_filename}
+                            </Select.Item>
+                          ))}
+                          {uploads.length === 0 && (
+                            <Select.Item value="" disabled>
+                              No uploads available
+                            </Select.Item>
+                          )}
                         </Select.Content>
                       </Select>
                     </div>
