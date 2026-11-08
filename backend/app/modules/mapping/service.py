@@ -62,6 +62,16 @@ class MappingService:
             raise ValidationException("File has not been parsed yet")
 
         headers = upload.column_headers.get("columns", [])
+        sample_rows = (upload.sample_data or {}).get("rows", [])
+
+        # Build sample values per column (up to 3 rows)
+        column_samples: dict[str, list[str]] = {}
+        for row in sample_rows:
+            for col in headers:
+                val = row.get(col)
+                if val is not None:
+                    column_samples.setdefault(col, []).append(str(val))
+
         mappings = {}
         for col in headers:
             normalized = col.strip().lower().replace("_", " ").replace("-", " ")
@@ -72,6 +82,7 @@ class MappingService:
                 "target_field": target,
                 "confidence": confidence,
                 "method": method,
+                "sample_values": column_samples.get(col, [])[:3],
             }
 
         return {"upload_id": str(upload_id), "mappings": mappings}

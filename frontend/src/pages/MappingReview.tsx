@@ -55,19 +55,51 @@ export function MappingReview() {
   React.useEffect(() => {
     if (suggestQuery.data) {
       const aiSuggestions = suggestQuery.data as any
+      const mappingsObj: Record<string, any> = aiSuggestions.mappings || {}
       const mapped: MappingField[] = CANONICAL_FIELDS.map((field) => {
-        const suggestion = aiSuggestions.suggestions?.find((s: any) => s.target_field === field.key) || {}
+        // Find the source column that maps to this canonical field (highest confidence wins)
+        let bestSource = ''
+        let bestConfidence = 0
+        let bestSampleValues: string[] = []
+
+        for (const [sourceCol, mapping] of Object.entries(mappingsObj)) {
+          if (mapping.target_field === field.key && mapping.confidence >= bestConfidence) {
+            bestSource = sourceCol
+            bestConfidence = mapping.confidence || 0
+            bestSampleValues = mapping.sample_values || []
+          }
+        }
+
         return {
-          source_column: suggestion.source_column || '',
-          sample_values: suggestion.sample_values || [],
-          inferred_type: suggestion.inferred_type || field.type,
-          mapped_target: suggestion.source_column ? field.key : null,
-          confidence: suggestion.confidence || 0,
-          status: suggestion.source_column ? 'pending' : 'pending',
-          explanation: suggestion.explanation || `Map ${field.label} from source column`,
+          source_column: bestSource,
+          sample_values: bestSampleValues,
+          inferred_type: bestSampleValues.length > 0 ? 'string' : field.type,
+          mapped_target: bestSource ? field.key : null,
+          confidence: bestConfidence,
+          status: bestSource ? 'pending' : 'pending',
+          explanation: bestSource
+            ? `Map ${field.label} from "${bestSource}"`
+            : `Map ${field.label} from source column`,
           warnings: [],
         }
       })
+      // Also include source columns that didn't map to any canonical field
+      const mappedSourceColumns = new Set(mapped.map((m) => m.source_column).filter(Boolean))
+      for (const sourceCol of Object.keys(mappingsObj)) {
+        if (!mappedSourceColumns.has(sourceCol)) {
+          mapped.push({
+            source_column: sourceCol,
+            sample_values: mappingsObj[sourceCol]?.sample_values || [],
+            inferred_type: 'string',
+            mapped_target: null,
+            confidence: 0,
+            status: 'pending',
+            explanation: `Map "${sourceCol}" to a ReconIQ field`,
+            warnings: [],
+          })
+        }
+      }
+
       setMappings(mapped)
       updateWarnings()
     }
