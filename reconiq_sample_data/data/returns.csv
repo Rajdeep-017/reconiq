@@ -1,0 +1,30 @@
+Return ID,Return Date,Order Reference,Partner,Return Reason,Return Status,Refund Amount,Refund Status,Refund Date
+RET-001,2024-09-20,ORD-amzn-10007,Amazon,Damaged,QC Passed,5996.71,Processed,2024-10-01
+RET-002,2024-09-20,ORD-flpk-10012,Website,Wrong Item,Received,10515.81,Failed,
+RET-003,2024-09-20,ORD-flpk-10024,Myntra,Size Mismatch,In Transit,1410.18,Pending,
+RET-004,2024-09-20,ORD-mesh-10025,Meesho,Damaged,In Transit,3171.09,Failed,
+RET-005,2024-09-20,ORD-myntra-10035,Flipkart,Wrong Item,In Transit,2858.23,Pending,
+RET-006,2024-09-20,ORD-myntra-10040,Website,Wrong Item,Received,9091.00,Failed,
+RET-007,2024-09-20,ORD-mesh-10063,Meesho,Customer Changed Mind,Received,2654.89,Failed,
+RET-008,2024-09-20,ORD-mesh-10066,Myntra,Damaged,Received,16670.47,Pending,
+RET-009,2024-09-20,ORD-web-10067,Amazon,Damaged,Received,14857.06,Processed,2024-10-01
+RET-010,2024-09-20,ORD-mesh-10069,Amazon,Wrong Item,In Transit,6589.86,Pending,
+RET-011,2024-09-20,ORD-myntra-10078,Website,Wrong Item,Received,46334.50,Processed,2024-10-01
+RET-012,2024-09-20,ORD-flpk-10092,Meesho,Size Mismatch,In Transit,10392.35,Failed,
+RET-013,2024-09-20,ORD-flpk-10093,Amazon,Damaged,In Transit,7631.10,Processed,2024-10-01
+RET-014,2024-09-20,ORD-web-10095,Meesho,Damaged,Received,15691.00,Failed,
+RET-015,2024-09-20,ORD-amzn-10101,Flipkart,Size Mismatch,In Transit,7000.67,Failed,
+RET-016,2024-09-20,ORD-mesh-10105,Myntra,Wrong Item,QC Passed,11554.92,Failed,
+RET-017,2024-09-20,ORD-flpk-10112,Meesho,Size Mismatch,In Transit,7174.76,Processed,2024-10-01
+RET-018,2024-09-20,ORD-myntra-10115,Website,Customer Changed Mind,QC Passed,12005.53,Failed,
+RET-019,2024-09-20,ORD-web-10117,Meesho,Customer Changed Mind,In Transit,12965.61,Failed,
+RET-020,2024-09-20,ORD-mesh-10128,Myntra,Customer Changed Mind,QC Passed,8691.75,Pending,
+RET-021,2024-09-20,ORD-flpk-10131,Website,Wrong Item,In Transit,2993.31,Failed,
+RET-022,2024-09-20,ORD-mesh-10138,Myntra,Size Mismatch,QC Passed,2831.32,Pending,
+RET-023,2024-09-20,ORD-amzn-10139,Flipkart,Customer Changed Mind,In Transit,8443.73,Failed,
+RET-024,2024-09-20,ORD-web-10149,Amazon,Size Mismatch,Received,12249.29,Failed,
+RET-025,2024-09-20,ORD-web-10171,Meesho,Damaged,Received,1319.68,Pending,
+RET-026,2024-09-20,ORD-web-10176,Website,Wrong Item,In Transit,4507.34,Pending,
+RET-027,2024-09-20,ORD-myntra-10177,Myntra,Wrong Item,QC Passed,3943.83,Failed,
+RET-028,2024-09-20,ORD-web-10192,Meesho,Size Mismatch,QC Passed,1857.56,Pending,
+RET-029,2024-09-20,ORD-amzn-10194,Website,Wrong Item,Received,39112.23,Processed,2024-10-01
