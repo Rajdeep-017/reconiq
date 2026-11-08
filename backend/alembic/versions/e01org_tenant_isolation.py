@@ -47,10 +47,10 @@ def _add_org_id_column(op, table_name: str, backfill_sql: str | None) -> None:
     """Add org_id to a table: nullable column → backfill → NOT NULL → index → FK."""
     conn = op.get_bind()
 
-    # 1. Add nullable org_id column + index
+    # 1. Add nullable org_id column (index created explicitly below)
     op.add_column(
         table_name,
-        sa.Column('org_id', sa.UUID(), nullable=True, index=True),
+        sa.Column('org_id', sa.UUID(), nullable=True),
     )
     op.create_index(op.f(f'ix_{table_name}_org_id'), table_name, ['org_id'], unique=False)
 
@@ -85,17 +85,17 @@ def upgrade() -> None:
         sa.Column('is_active', sa.Boolean(), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('slug')
+        sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_organizations_slug'), 'organizations', ['slug'], unique=False)
+    op.create_index(op.f('ix_organizations_slug'), 'organizations', ['slug'], unique=True)
+    op.create_index(op.f('ix_organizations_owner_id'), 'organizations', ['owner_id'], unique=False)
 
     # ------------------------------------------------------------------
     # 2. Add users.org_id (nullable) + index + FK to organizations
     # ------------------------------------------------------------------
     op.add_column(
         'users',
-        sa.Column('org_id', sa.UUID(), nullable=True, index=True),
+        sa.Column('org_id', sa.UUID(), nullable=True),
     )
     op.create_index(op.f('ix_users_org_id'), 'users', ['org_id'], unique=False)
     op.create_foreign_key(
@@ -167,14 +167,12 @@ def upgrade() -> None:
     # 7. Update partner uniqueness: code stays globally unique,
     #    name becomes unique per organization
     # ------------------------------------------------------------------
-    op.drop_constraint('partners_name_key', 'partners', type_='unique')
     op.create_unique_constraint('uq_partners_org_id_name', 'partners', ['org_id', 'name'])
 
 
 def downgrade() -> None:
     # Remove foreign keys and org_id columns in reverse order
     op.drop_constraint('uq_partners_org_id_name', 'partners', type_='unique')
-    op.create_unique_constraint('partners_name_key', 'partners', ['name'])
 
     for table_name, _ in reversed(ORG_TABLES):
         if table_name == 'users':

@@ -41,6 +41,9 @@ storage/exports/*
 # Docker
 pgdata/
 
+# Backups
+backups/
+
 # Coverage
 htmlcov/
 .coverage

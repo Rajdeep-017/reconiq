@@ -30,10 +30,11 @@ def upgrade() -> None:
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('name')
-    )
-    op.create_index(op.f('ix_partners_code'), 'partners', ['code'], unique=True)
+    sa.PrimaryKeyConstraint('id')
+)
+    op.create_index(op.f('ix_partners_code'), 'partners', ['code'], unique=False)
+    op.create_index(op.f('ix_partners_name'), 'partners', ['name'], unique=False)
+    op.create_unique_constraint('uq_partners_code', 'partners', ['code'])
     op.create_table('users',
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('full_name', sa.String(length=255), nullable=False),
