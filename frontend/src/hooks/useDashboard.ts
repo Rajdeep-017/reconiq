@@ -9,5 +9,7 @@ export function useDashboard() {
       const res = await api.client.get<DashboardMetrics>('/dashboard/metrics')
       return res.data
     },
+    // Keep financial overview fresh without a manual refresh.
+    refetchInterval: 30_000,
   })
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,8 +12,11 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { formatCurrencyINR } from '@/lib/utils'
-import { Download, Plus } from 'lucide-react'
 import { useClaims, useCreateClaim, useUpdateClaim } from '@/hooks/useClaims'
+import { useDiscrepancies } from '@/hooks/useDiscrepancies'
+import { toast } from 'sonner'
+import { extractErrorMessage } from '@/lib/api'
+import { Plus, RefreshCw, Loader2 } from 'lucide-react'
 
 const CLAIM_STATUSES = [
   'draft',
@@ -25,6 +28,57 @@ const CLAIM_STATUSES = [
   'closed',
 ]
 
+/** Next statuses the UI offers per current claim status. Resolved/closed are
+ * restricted to finance cofounders by the backend; errors surface as toasts. */
+const NEXT_STATUSES: Record<string, { value: string; label: string; cofounderOnly?: boolean }[]> = {
+  draft: [{ value: 'submitted', label: 'Submit to partner' }],
+  submitted: [
+    { value: 'acknowledged', label: 'Mark acknowledged' },
+    { value: 'under_review', label: 'Move to review' },
+    { value: 'rejected', label: 'Reject' },
+  ],
+  acknowledged: [{ value: 'under_review', label: 'Move to review' }, { value: 'rejected', label: 'Reject' }],
+  under_review: [
+    { value: 'resolved', label: 'Resolve (recovered)', cofounderOnly: true },
+    { value: 'rejected', label: 'Reject', cofounderOnly: false },
+  ],
+  resolved: [{ value: 'closed', label: 'Close', cofounderOnly: true }],
+  rejected: [],
+  closed: [],
+}
+
+const CLAIM_TYPE_OPTIONS = [
+  { value: 'short_payment', label: 'Short Payment' },
+  { value: 'missing_settlement', label: 'Missing Settlement' },
+  { value: 'freight_overcharge', label: 'Freight Overcharge' },
+  { value: 'duplicate_awb_billing', label: 'Duplicate AWB Billing' },
+  { value: 'missing_cod_remittance', label: 'COD Remittance' },
+  { value: 'return_not_received', label: 'Return Not Received' },
+  { value: 'return_refund', label: 'Return/Refund' },
+]
+
+const claimTypeDefault = (discType: string | undefined): string => {
+  switch (discType) {
+    case 'short_paid':
+    case 'short_payment':
+      return 'short_payment'
+    case 'missing_settlement':
+      return 'missing_settlement'
+    case 'missing_freight_invoice':
+    case 'freight_overcharged':
+    case 'freight_overcharge':
+    case 'duplicate_awb_billing':
+      return 'freight_overcharge'
+    case 'missing_cod_remittance':
+      return 'missing_cod_remittance'
+    case 'return_not_received':
+    case 'return_refund_mismatch':
+      return 'return_not_received'
+    default:
+      return ''
+  }
+}
+
 export function ClaimsManagement() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -33,17 +87,34 @@ export function ClaimsManagement() {
   const [claimType, setClaimType] = useState('')
   const [claimNotes, setClaimNotes] = useState('')
 
-  const { data: claims = [], isLoading, error } = useClaims({
+  const { data: claims = [], isLoading, error, refetch } = useClaims({
     page: 1,
     page_size: 100,
   })
+  const { data: discrepancies = [] } = useDiscrepancies({ page: 1, page_size: 100 })
   const createMutation = useCreateClaim()
   const updateMutation = useUpdateClaim()
+
+  const discrepancyOptions = useMemo(
+    () =>
+      discrepancies.map((d) => ({
+        id: d.id,
+        label: `${d.order_reference} · ${(d.discrepancy_type ?? '').replace(/_/g, ' ')} · ₹${Number(d.difference_amount).toLocaleString('en-IN')}`,
+        type: d.discrepancy_type,
+      })),
+    [discrepancies]
+  )
+
+  const handleDiscrepancyPicked = (id: string) => {
+    setDiscrepancyId(id)
+    const picked = discrepancyOptions.find((o) => o.id === id)
+    setClaimType(claimTypeDefault(picked?.type))
+  }
 
   const handleCreateClaim = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         discrepancy_id: discrepancyId,
         claim_type: claimType,
         notes: claimNotes || undefined,
@@ -52,9 +123,21 @@ export function ClaimsManagement() {
       setDiscrepancyId('')
       setClaimType('')
       setClaimNotes('')
+      toast.success(`Claim ${created.claim_reference} created as draft (₹${Number(created.claim_amount).toLocaleString('en-IN')}).`)
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to create claim.'
-      alert(msg)
+      toast.error(extractErrorMessage(err))
+    }
+  }
+
+  const handleUpdateClaim = async (
+    id: string,
+    status: string,
+  ) => {
+    try {
+      await updateMutation.mutateAsync({ id, data: { status } })
+      toast.success(`Claim marked as ${status.replace(/_/g, ' ')}.`)
+    } catch (err: unknown) {
+      toast.error(extractErrorMessage(err))
     }
   }
 
@@ -78,9 +161,9 @@ export function ClaimsManagement() {
 
   if (error) {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" onRetry={() => void refetch()} retryLabel="Retry">
         <AlertTitle>Failed to load claims</AlertTitle>
-        <AlertDescription>{String(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
       </Alert>
     )
   }
@@ -131,18 +214,6 @@ export function ClaimsManagement() {
     }
   }
 
-  const handleUpdateClaim = async (
-    id: string,
-    status: string,
-  ) => {
-    try {
-      await updateMutation.mutateAsync({ id, data: { status } })
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || 'Update failed'
-      alert(msg)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -153,11 +224,12 @@ export function ClaimsManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" /> Export Evidence
+          <Button variant="outline" size="sm" onClick={() => void refetch()} className="flex items-center gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </Button>
           <Button onClick={() => setShowCreateDialog(true)} disabled={createMutation.isPending}>
-            <Plus className="h-4 w-4 mr-2" /> Create Claim
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+            Create Claim
           </Button>
         </div>
       </div>
@@ -282,11 +354,9 @@ export function ClaimsManagement() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle>Claims</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>
-              View History
-            </Button>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            Draft claims are auto-created by the engine for claimable discrepancies.
+          </span>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-auto">
@@ -329,15 +399,34 @@ export function ClaimsManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleUpdateClaim(c.id, 'submitted')}
-                            disabled={c.status !== 'draft' || updateMutation.isPending}
+                        <div className="flex flex-wrap gap-1">
+                          {(NEXT_STATUSES[c.status] ?? []).some((n) => n.value === 'submitted') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleUpdateClaim(c.id, 'submitted')}
+                              disabled={updateMutation.isPending}
+                            >
+                              Submit
+                            </Button>
+                          )}
+                          <Select
+                            value=""
+                            onValueChange={(v) => v && void handleUpdateClaim(c.id, v)}
+                            disabled={updateMutation.isPending || (NEXT_STATUSES[c.status] ?? []).length === 0}
                           >
-                            Submit
-                          </Button>
+                            <Select.Trigger className="w-[150px] h-8 text-xs">
+                              <Select.Value placeholder={(NEXT_STATUSES[c.status] ?? []).length ? 'Change status…' : 'No actions'} />
+                            </Select.Trigger>
+                            <Select.Content>
+                              {(NEXT_STATUSES[c.status] ?? []).map((n) => (
+                                <Select.Item key={n.value} value={n.value}>
+                                  {n.label}
+                                  {n.cofounderOnly ? ' (cofounder)' : ''}
+                                </Select.Item>
+                              ))}
+                            </Select.Content>
+                          </Select>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -374,13 +463,28 @@ export function ClaimsManagement() {
               <form onSubmit={handleCreateClaim}>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="create_claim_discrepancy_id">Discrepancy ID</Label>
-                    <Input
-                      id="create_claim_discrepancy_id"
-                      placeholder="e.g. DSC-2024-001"
+                    <Label htmlFor="create_claim_discrepancy_id">Discrepancy</Label>
+                    <Select
                       value={discrepancyId}
-                      onChange={(e) => setDiscrepancyId(e.target.value)}
-                    />
+                      onValueChange={handleDiscrepancyPicked}
+                    >
+                      <Select.Trigger className="w-full">
+                        <Select.Value placeholder={discrepancyOptions.length ? 'Select discrepancy…' : 'No discrepancies yet'} />
+                      </Select.Trigger>
+                      <Select.Content>
+                        {discrepancyOptions.length === 0 ? (
+                          <Select.Item value="" disabled>
+                            Execute a reconciliation run first
+                          </Select.Item>
+                        ) : (
+                          discrepancyOptions.map((o) => (
+                            <Select.Item key={o.id} value={o.id}>
+                              {o.label}
+                            </Select.Item>
+                          ))
+                        )}
+                      </Select.Content>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="create_claim_type">Claim Type</Label>
@@ -392,12 +496,14 @@ export function ClaimsManagement() {
                         <Select.Value placeholder="Select claim type…" />
                       </Select.Trigger>
                       <Select.Content>
-                        <Select.Item value="short_payment">Short Payment</Select.Item>
-                        <Select.Item value="missing_settlement">Missing Settlement</Select.Item>
-                        <Select.Item value="freight_overcharge">Freight Overcharge</Select.Item>
-                        <Select.Item value="cod_remittance">COD Remittance</Select.Item>
-                        <Select.Item value="return_refund">Return/Refund</Select.Item>
-                        <Select.Item value="duplicate_deduction">Duplicate Deduction</Select.Item>
+                        <Select.Item value="" disabled className="text-muted-foreground">
+                          Select claim type…
+                        </Select.Item>
+                        {CLAIM_TYPE_OPTIONS.map((t) => (
+                          <Select.Item key={t.value} value={t.value}>
+                            {t.label}
+                          </Select.Item>
+                        ))}
                       </Select.Content>
                     </Select>
                   </div>

@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { discrepancyService } from '@/services/discrepancies'
 import type { DiscrepancyUpdateRequest } from '@/services/discrepancies'
+import { invalidateFinancialData } from '@/lib/invalidation'
 
 export function useDiscrepancies(params?: {
   run_id?: string
@@ -29,7 +30,7 @@ export function useUpdateDiscrepancy() {
     mutationFn: ({ id, data }: { id: string; data: DiscrepancyUpdateRequest }) =>
       discrepancyService.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['discrepancies'] })
+      invalidateFinancialData(queryClient)
     },
   })
 }

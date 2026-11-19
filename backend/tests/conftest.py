@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Generator
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 # Override settings before importing the app
@@ -46,7 +46,11 @@ def _db_engine():
 
     Base.metadata.create_all(bind=engine)
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    # Drop the whole schema rather than relying on dependency sorting: the
+    # organizations <-> users ownership cycle is intentionally mutual.
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
     engine.dispose()
 
 
@@ -93,7 +97,23 @@ def client(db: Session):
 # ── User fixtures ─────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def test_user(db: Session):
+def default_org(db: Session):
+    """Shared organization for the standard test users."""
+    from app.models.organization import Organization
+
+    org = Organization(
+        id=uuid.uuid4(),
+        name="Test Organization",
+        slug=f"test-org-{uuid.uuid4().hex[:8]}",
+        is_active=True,
+    )
+    db.add(org)
+    db.flush()
+    return org
+
+
+@pytest.fixture()
+def test_user(db: Session, default_org):
     """Create a test finance_executive user."""
     from app.core.security import hash_password
     from app.models.user import User, UserRole
@@ -105,6 +125,7 @@ def test_user(db: Session):
         hashed_password=hash_password("testpassword123"),
         role=UserRole.FINANCE_EXECUTIVE,
         is_active=True,
+        org_id=default_org.id,
     )
     db.add(user)
     db.flush()
@@ -112,7 +133,7 @@ def test_user(db: Session):
 
 
 @pytest.fixture()
-def admin_user(db: Session):
+def admin_user(db: Session, default_org):
     """Create a test finance_cofounder (admin) user."""
     from app.core.security import hash_password
     from app.models.user import User, UserRole
@@ -124,6 +145,7 @@ def admin_user(db: Session):
         hashed_password=hash_password("adminpassword123"),
         role=UserRole.FINANCE_COFOUNDER,
         is_active=True,
+        org_id=default_org.id,
     )
     db.add(user)
     db.flush()

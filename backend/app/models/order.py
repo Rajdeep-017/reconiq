@@ -151,3 +151,33 @@ class Return(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     order = relationship("Order", foreign_keys=[order_id])
     partner = relationship("Partner", foreign_keys=[partner_id])
 
+
+class WarehouseScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Warehouse return scan event (used to prove a return was received)."""
+
+    __tablename__ = "warehouse_scans"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    upload_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True, index=True
+    )
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("partners.id"), nullable=True
+    )
+
+    scan_reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    order_reference: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    awb_number: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    scan_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    scan_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Relationships
+    upload = relationship("Upload", foreign_keys=[upload_id])
+    partner = relationship("Partner", foreign_keys=[partner_id])
+

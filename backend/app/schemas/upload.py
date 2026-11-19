@@ -14,6 +14,9 @@ class UploadResponse(BaseModel):
     file_size: int
     sha256_checksum: str
     row_count: int | None
+    processed_count: int
+    rejected_count: int
+    duplicate_count: int
     column_headers: dict | None
     sample_data: dict | None
     status: str

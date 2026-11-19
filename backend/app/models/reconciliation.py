@@ -142,6 +142,10 @@ class ReconciliationResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         SAEnum(MatchStatus, name="match_status", create_constraint=True),
         nullable=False,
     )
+    # Business status produced by the Phase D engine for this stream, e.g.
+    # settled / short_paid / unpaid_past_due / freight_overcharged /
+    # return_not_received / settled_late / not_yet_due / missing_freight_invoice.
+    stream_status: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     confidence_score: Mapped[Decimal] = mapped_column(
         Numeric(5, 4), nullable=False, default=Decimal("0")
     )

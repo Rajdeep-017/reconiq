@@ -1,11 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { reconciliationService } from '@/services/reconciliation'
 import type { ReconRunCreate } from '@/services/reconciliation'
+import { ACTIVE_RUN_STATUSES } from '@/types'
+import { invalidateFinancialData } from '@/lib/invalidation'
+
+const RUNS_KEY = ['reconciliation-runs'] as const
 
 export function useReconciliationRuns(page = 1) {
   return useQuery({
-    queryKey: ['reconciliation-runs', page],
+    queryKey: [...RUNS_KEY, page],
     queryFn: () => reconciliationService.listRuns({ page }),
+    // Poll while any run is created/running so the workspace updates on its own.
+    refetchInterval: (query) => {
+      const runs = (query.state.data as Awaited<
+        ReturnType<typeof reconciliationService.listRuns>
+      > | undefined) || []
+      const hasActive = runs.some((r) => (ACTIVE_RUN_STATUSES as string[]).includes(r.status))
+      return hasActive ? 3000 : false
+    },
   })
 }
 
@@ -31,7 +43,7 @@ export function useCreateReconciliationRun() {
   return useMutation({
     mutationFn: (data: ReconRunCreate) => reconciliationService.createRun(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-runs'] })
+      invalidateFinancialData(queryClient)
     },
   })
 }
@@ -41,10 +53,11 @@ export function useExecuteReconciliationRun() {
 
   return useMutation({
     mutationFn: (runId: string) => reconciliationService.executeRun(runId),
-    onSuccess: (_, runId) => {
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-runs'] })
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-run', runId] })
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-results', runId] })
+    onSuccess: (run) => {
+      // Execution writes results, discrepancies and claims.
+      invalidateFinancialData(queryClient)
+      queryClient.setQueryData(['reconciliation-run', run.id], run)
+      void queryClient.invalidateQueries({ queryKey: ['reconciliation-results', run.id] })
     },
   })
 }

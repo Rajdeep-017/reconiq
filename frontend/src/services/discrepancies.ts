@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { DiscrepancyResponse } from '@/types'
 
 export interface DiscrepancyUpdateRequest {
   status: string
@@ -11,18 +12,21 @@ export const discrepancyService = {
     status?: string
     page?: number
     page_size?: number
-  }) => {
-    const res = await api.client.get('/discrepancies', { params })
+  }): Promise<DiscrepancyResponse[]> => {
+    const res = await api.client.get<DiscrepancyResponse[]>('/discrepancies', { params })
     return res.data
   },
 
-  get: async (id: string) => {
-    const res = await api.client.get(`/discrepancies/${id}`)
+  get: async (id: string): Promise<DiscrepancyResponse> => {
+    const res = await api.client.get<DiscrepancyResponse>(`/discrepancies/${id}`)
     return res.data
   },
 
-  update: async (id: string, data: DiscrepancyUpdateRequest) => {
-    const res = await api.client.patch(`/discrepancies/${id}`, data)
+  update: async (
+    id: string,
+    data: DiscrepancyUpdateRequest
+  ): Promise<DiscrepancyResponse> => {
+    const res = await api.client.patch<DiscrepancyResponse>(`/discrepancies/${id}`, data)
     return res.data
   },
 }

@@ -149,7 +149,7 @@ def upload_a(db, org_a, user_a):
         document_type=DocumentType.ORDERS,
         file_size=1024,
         sha256_checksum="a" * 64,
-        status=UploadStatus.COMPLETED,
+        status=UploadStatus.PROCESSED,
     )
     db.add(u)
     db.flush()
@@ -168,7 +168,7 @@ def upload_b(db, org_b, user_b):
         document_type=DocumentType.ORDERS,
         file_size=1024,
         sha256_checksum="b" * 64,
-        status=UploadStatus.COMPLETED,
+        status=UploadStatus.PROCESSED,
     )
     db.add(u)
     db.flush()

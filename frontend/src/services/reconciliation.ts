@@ -21,10 +21,13 @@ export interface ReconResultResponse {
   order_reference: string
   match_method: string
   match_status: string
+  stream_status?: string | null
   confidence_score: number | string
   expected_amount: number | string
   actual_amount: number | string
   difference: number | string
+  explanation?: string | null
+  details?: Record<string, unknown> | null
 }
 
 export interface ReconRunCreate {
@@ -45,6 +48,8 @@ export const reconciliationService = {
     return res.data
   },
 
+  /** Synchronous execution — the backend runs the matching engine and
+   * returns the completed run (status completed/failed) with counters. */
   executeRun: async (runId: string): Promise<ReconRunResponse> => {
     const res = await api.client.post<ReconRunResponse>(`/reconciliation/${runId}/execute`)
     return res.data

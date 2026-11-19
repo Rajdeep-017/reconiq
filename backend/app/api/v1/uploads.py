@@ -10,6 +10,7 @@ from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.user import User
 from app.modules.ingestion.service import IngestionService
+from app.modules.normalization.service import NormalizationService
 from app.schemas.upload import UploadResponse, UploadListResponse
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
@@ -67,6 +68,28 @@ def list_uploads(
         uploads=[UploadResponse.model_validate(u) for u in uploads],
         total=total, page=page, page_size=page_size,
     )
+
+
+@router.post("/{upload_id}/process", response_model=UploadResponse)
+def process_upload(
+    upload_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    current_org: Organization = Depends(get_current_organization),
+    settings: Settings = Depends(get_settings),
+):
+    """Run deterministic normalization for an upload with an approved mapping."""
+    upload = IngestionService(db, settings).get_upload(upload_id)
+    if upload.org_id != current_org.id:
+        from app.core.exceptions import ForbiddenException
+
+        raise ForbiddenException(
+            "Access denied: upload belongs to a different organization"
+        )
+    processed = NormalizationService(db).process_upload(
+        upload_id, org_id=current_org.id
+    )
+    return UploadResponse.model_validate(processed)
 
 
 @router.get("/{upload_id}", response_model=UploadResponse)

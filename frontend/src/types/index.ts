@@ -1,11 +1,75 @@
-export type DocumentType = 'orders' | 'settlements' | 'freight' | 'cod_remittances' | 'returns'
-export type UserRole = 'finance_executive' | 'finance_cofounder' | 'owner' | 'admin' | 'member' | 'viewer'
-export type UploadStatus = 'uploaded' | 'parsing' | 'parsed' | 'mapped' | 'normalized' | 'failed'
-export type ReconRunStatus = 'pending' | 'running' | 'completed' | 'failed'
-export type MatchStatus = 'exact' | 'fuzzy_high' | 'fuzzy_low' | 'manual' | 'unmatched'
-export type DiscrepancyStatus = 'open' | 'verified' | 'resolved' | 'dismissed'
-export type ClaimStatus = 'draft' | 'submitted' | 'acknowledged' | 'under_review' | 'resolved' | 'rejected' | 'closed'
-export type ReconciliationStatus = 'matched' | 'unmatched' | 'partial'
+// Synced with backend enums:
+//   app/models/upload.py (DocumentType, UploadStatus)
+//   app/models/reconciliation.py (ReconStatus, ReconType, MatchStatus)
+//   app/models/discrepancy.py (DiscrepancyType, DiscrepancyStatus, ClaimStatus)
+//   app/modules/matching/common.py (StreamStatus)
+
+export type DocumentType =
+  | 'orders'
+  | 'settlements'
+  | 'cod_remittances'
+  | 'freight_invoices'
+  | 'returns'
+  | 'warehouse_scans'
+
+export type UserRole =
+  | 'finance_executive'
+  | 'finance_cofounder'
+  | 'admin'
+  | 'member'
+  | 'viewer'
+
+export type UploadStatus =
+  | 'uploaded'
+  | 'parsed'
+  | 'mapped'
+  | 'processing'
+  | 'processed'
+  | 'failed'
+
+/** Statuses that move server-side and require polling. */
+export const ACTIVE_UPLOAD_STATUSES: UploadStatus[] = ['uploaded', 'parsed', 'mapped', 'processing']
+
+export type ReconRunStatus = 'created' | 'running' | 'completed' | 'failed'
+
+export const ACTIVE_RUN_STATUSES: ReconRunStatus[] = ['created', 'running']
+
+/** Engine stream pairs: recon_type = 'settlement' | 'cod' | 'freight' | 'return'. */
+export type ReconType = 'settlement' | 'cod' | 'freight' | 'return'
+
+export type MatchStatus =
+  | 'matched'
+  | 'partial'
+  | 'unmatched'
+  | 'review_pending'
+  | 'confirmed'
+  | 'rejected'
+
+export type StreamStatus =
+  | 'settled'
+  | 'short_paid'
+  | 'unpaid_past_due'
+  | 'freight_overcharged'
+  | 'return_not_received'
+  | 'settled_late'
+  | 'not_yet_due'
+  | 'missing_freight_invoice'
+
+export type DiscrepancyStatus =
+  | 'detected'
+  | 'verified'
+  | 'disputed'
+  | 'resolved'
+  | 'dismissed'
+
+export type ClaimStatus =
+  | 'draft'
+  | 'submitted'
+  | 'acknowledged'
+  | 'under_review'
+  | 'resolved'
+  | 'rejected'
+  | 'closed'
 
 export interface User {
   id: string
@@ -45,6 +109,9 @@ export interface UploadResponse {
   file_size: number
   sha256_checksum: string
   row_count: number | null
+  processed_count: number
+  rejected_count: number
+  duplicate_count: number
   column_headers: Record<string, unknown> | null
   sample_data: Record<string, unknown> | null
   status: UploadStatus
@@ -102,7 +169,7 @@ export interface ReconRunCreate {
 export interface ReconRunResponse {
   id: string
   name: string
-  recon_type: string
+  recon_type: ReconType
   status: ReconRunStatus
   total_source: number
   total_target: number
@@ -112,20 +179,21 @@ export interface ReconRunResponse {
   total_expected: string | number
   total_received: string | number
   total_discrepancy: string | number
-  created_at?: string
-  updated_at?: string
 }
 
 export interface ReconResultResponse {
   id: string
   run_id: string
   order_reference: string
-  match_method: MatchStatus
-  match_status: ReconciliationStatus
+  match_method: string
+  match_status: MatchStatus
+  stream_status: StreamStatus | null
   confidence_score: string | number
   expected_amount: string | number
   actual_amount: string | number
   difference: string | number
+  explanation?: string | null
+  details?: Record<string, unknown> | null
 }
 
 export interface DiscrepancyResponse {
@@ -177,9 +245,12 @@ export interface ClaimUpdateRequest {
 export interface PartnerResponse {
   id: string
   name: string
-  slug: string
-  is_default?: boolean
+  code: string
+  partner_type: string
+  description: string | null
+  is_active: boolean
   created_at?: string
+  updated_at?: string
 }
 
 export interface AnalyticsDataPoint {

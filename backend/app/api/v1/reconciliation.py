@@ -1,5 +1,6 @@
 """Reconciliation API endpoints — organization-scoped."""
 from __future__ import annotations
+from datetime import date
 from uuid import UUID
 from decimal import Decimal
 from pydantic import BaseModel
@@ -19,6 +20,7 @@ class ReconRunCreate(BaseModel):
     recon_type: str
     source_upload_id: UUID
     target_upload_id: UUID
+    as_of: date | None = None
 
 
 class ReconRunResponse(BaseModel):
@@ -43,10 +45,13 @@ class ReconResultResponse(BaseModel):
     order_reference: str
     match_method: str
     match_status: str
+    stream_status: str | None = None
     confidence_score: Decimal
     expected_amount: Decimal
     actual_amount: Decimal
     difference: Decimal
+    explanation: str | None = None
+    details: dict | None = None
     model_config = {"from_attributes": True}
 
 
@@ -59,7 +64,7 @@ def create_run(
 ):
     run = ReconciliationService(db).create_run(
         data.name, data.recon_type, data.source_upload_id, data.target_upload_id,
-        user.id, org_id=current_org.id,
+        user.id, org_id=current_org.id, as_of=data.as_of,
     )
     return ReconRunResponse.model_validate(run)
 
@@ -67,6 +72,7 @@ def create_run(
 @router.post("/{run_id}/execute", response_model=ReconRunResponse)
 def execute_run(
     run_id: UUID,
+    as_of: date | None = Query(None),
     db: Session = Depends(get_db),
     current_org: Organization = Depends(get_current_organization),
 ):
@@ -75,7 +81,7 @@ def execute_run(
         from app.core.exceptions import ForbiddenException
         raise ForbiddenException("Access denied: run belongs to a different organization")
     return ReconRunResponse.model_validate(
-        ReconciliationService(db).execute_settlement_reconciliation(run_id)
+        ReconciliationService(db).execute_run(run_id, as_of=as_of)
     )
 
 

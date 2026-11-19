@@ -35,6 +35,15 @@ class DiscrepancyType(str, enum.Enum):
     EXCESS_PAYMENT = "excess_payment"
     OTHER = "other"
 
+    # Phase D engine vocabulary — one value per stream status.
+    SHORT_PAID = "short_paid"
+    UNPAID_PAST_DUE = "unpaid_past_due"
+    MISSING_FREIGHT_INVOICE = "missing_freight_invoice"
+    FREIGHT_OVERCHARGED = "freight_overcharged"
+    DUPLICATE_AWB_BILLING = "duplicate_awb_billing"
+    RETURN_NOT_RECEIVED = "return_not_received"
+    SETTLED_LATE = "settled_late"
+
 
 class DiscrepancySeverity(str, enum.Enum):
     LOW = "low"

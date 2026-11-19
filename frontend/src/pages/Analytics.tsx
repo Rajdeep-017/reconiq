@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, ResponsiveContainer,
@@ -11,7 +10,6 @@ import {
 } from 'recharts'
 import {
   useSettlementTrends,
-  useMatchingTrends,
   usePartnerPerformance,
   usePartnerDiscrepancies,
   useFreightOvercharge,
@@ -20,7 +18,9 @@ import {
   useClaimRecovery,
   useMonthWise,
 } from '@/hooks/useAnalytics'
-import { Download } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
+import { RefreshCw } from 'lucide-react'
 
 function EmptyChart({ title }: { title: string }) {
   return (
@@ -30,18 +30,28 @@ function EmptyChart({ title }: { title: string }) {
   )
 }
 
+const daysForRange = (range: string) => {
+  switch (range) {
+    case '7d':
+      return 7
+    case '90d':
+      return 90
+    case '1y':
+      return 365
+    default:
+      return 30
+  }
+}
+
 export function Analytics() {
   const [dateRange, setDateRange] = useState('30d')
-  const [partnerFilter, setPartnerFilter] = useState('')
-  const [categoryFilter] = useState('')
+  const days = daysForRange(dateRange)
 
   const {
     data: settlementTrends,
     isLoading: settlementLoading,
-  } = useSettlementTrends()
-  const {
-    isLoading: matchingLoading,
-  } = useMatchingTrends()
+    error: settlementError,
+  } = useSettlementTrends({ days })
   const {
     data: partnerPerformance,
     isLoading: partnerLoading,
@@ -57,7 +67,7 @@ export function Analytics() {
   const {
     data: codRemittance,
     isLoading: codLoading,
-  } = useCODRemittance()
+  } = useCODRemittance({ days })
   const {
     data: returnRefund,
     isLoading: returnsLoading,
@@ -65,7 +75,7 @@ export function Analytics() {
   const {
     data: claimRecovery,
     isLoading: claimsLoading,
-  } = useClaimRecovery()
+  } = useClaimRecovery({ days })
   const {
     data: monthWise,
     isLoading: monthLoading,
@@ -73,7 +83,6 @@ export function Analytics() {
 
   const isLoading =
     settlementLoading ||
-    matchingLoading ||
     partnerLoading ||
     discrepanciesLoading ||
     freightLoading ||
@@ -81,6 +90,10 @@ export function Analytics() {
     returnsLoading ||
     claimsLoading ||
     monthLoading
+
+  const error =
+    settlementError ||
+    null
 
   if (isLoading) {
     return (
@@ -96,15 +109,23 @@ export function Analytics() {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
           {[...Array(8)].map((_, i) => (
             <Card key={i} className="h-72">
-              <CardContent>
-                <div className="flex h-48 items-center justify-center">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border-4 border-border border-t-primary animate-spin" />
-                </div>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-48 w-full" />
               </CardContent>
             </Card>
           ))}
         </div>
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Failed to load analytics</AlertTitle>
+        <AlertDescription>{String(error)}</AlertDescription>
+      </Alert>
     )
   }
 
@@ -118,65 +139,26 @@ export function Analytics() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" /> Export
+          <Select value={dateRange} onValueChange={(v) => setDateRange(v as string)}>
+            <Select.Trigger className="w-[160px]">
+              <Select.Value />
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value="7d">Last 7 days</Select.Item>
+              <Select.Item value="30d">Last 30 days</Select.Item>
+              <Select.Item value="90d">Last 90 days</Select.Item>
+              <Select.Item value="1y">Last year</Select.Item>
+            </Select.Content>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="flex items-center gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </Button>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="analytics_date_range">Date Range</Label>
-            <Select value={dateRange} onValueChange={(v) => setDateRange(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="Select range…" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="7d">Last 7 days</Select.Item>
-                <Select.Item value="30d">Last 30 days</Select.Item>
-                <Select.Item value="90d">Last 90 days</Select.Item>
-                <Select.Item value="1y">Last year</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="analytics_partner">Partner</Label>
-            <Select value={partnerFilter} onValueChange={(v) => setPartnerFilter(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="All partners" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="amazon">Amazon</Select.Item>
-                <Select.Item value="flipkart">Flipkart</Select.Item>
-                <Select.Item value="myntra">Myntra</Select.Item>
-                <Select.Item value="meesho">Meesho</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="analytics_category">Category</Label>
-            <Select value={categoryFilter}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="All categories" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="short_payment">Short Payment</Select.Item>
-                <Select.Item value="missing_settlement">Missing Settlement</Select.Item>
-                <Select.Item value="freight_overcharge">Freight Overcharge</Select.Item>
-                <Select.Item value="cod_remittance">COD Remittance</Select.Item>
-                <Select.Item value="return_refund">Return/Refund</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button className="w-full">Apply Filters</Button>
-          </div>
-        </CardContent>
-      </Card>
+      <p className="text-xs text-muted-foreground">
+        Date range applies to settlement trends, COD remittance and claim recovery charts; partner
+        and other aggregates always cover all data.
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 1. Settlement trends */}

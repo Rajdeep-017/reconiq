@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { MappingResponse, MappingSaveRequest } from '@/types'
+import { invalidateFinancialData } from '@/lib/invalidation'
 
 export function useSuggestMapping(uploadId: string) {
   return useQuery({
@@ -33,7 +34,10 @@ export function useSaveMapping() {
       return res.data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['mappings', variables.upload_id] })
+      // Approval triggers normalization + processing server-side, so every
+      // downstream dataset can change.
+      invalidateFinancialData(queryClient, ['mappings'])
+      void queryClient.invalidateQueries({ queryKey: ['mappings', 'suggest', variables.upload_id] })
     },
   })
 }

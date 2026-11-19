@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useDashboard } from '@/hooks/useDashboard'
-import {
-  useSettlementTrends,
-  useMatchingTrends,
-  usePartnerPerformance,
-  usePartnerDiscrepancies,
-} from '@/hooks/useAnalytics'
+import { useUploads } from '@/hooks/useUploads'
+import { useReconciliationRuns } from '@/hooks/useReconciliation'
+import { useDiscrepancies } from '@/hooks/useDiscrepancies'
+import { useClaims } from '@/hooks/useClaims'
+import { useSettlementTrends, useMatchingTrends, usePartnerPerformance, usePartnerDiscrepancies } from '@/hooks/useAnalytics'
 import { formatCurrencyINR } from '@/lib/utils'
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
@@ -20,7 +20,7 @@ import {
 } from 'recharts'
 import {
   LayoutDashboard, AlertCircle, FileText,
-  TrendingUp, Coins, CheckCircle, RefreshCw, ExternalLink
+  TrendingUp, Coins, CheckCircle, RefreshCw
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
@@ -65,8 +65,69 @@ const KPICard = ({
   </Card>
 )
 
+const uploadStatusBadge = (status: string) => {
+  switch (status) {
+    case 'processed':
+      return <Badge variant="success">Processed</Badge>
+    case 'failed':
+      return <Badge variant="destructive">Failed</Badge>
+    case 'mapped':
+      return <Badge variant="warning">Mapped</Badge>
+    case 'processing':
+      return <Badge variant="warning">Processing</Badge>
+    default:
+      return <Badge variant="secondary">Parsed</Badge>
+  }
+}
+
+const runStatusBadge = (status: string) => {
+  switch (status) {
+    case 'completed':
+      return <Badge variant="success">Completed</Badge>
+    case 'failed':
+      return <Badge variant="destructive">Failed</Badge>
+    case 'running':
+      return <Badge variant="warning">Running</Badge>
+    default:
+      return <Badge variant="secondary">Created</Badge>
+  }
+}
+
+const discrepancyStatusBadge = (status: string) => {
+  switch (status) {
+    case 'verified':
+      return <Badge variant="success">Verified</Badge>
+    case 'resolved':
+      return <Badge variant="success">Resolved</Badge>
+    case 'dismissed':
+      return <Badge variant="secondary">Dismissed</Badge>
+    case 'disputed':
+      return <Badge variant="warning">Disputed</Badge>
+    default:
+      return <Badge variant="warning">Detected</Badge>
+  }
+}
+
+const claimStatusBadge = (status: string) => {
+  switch (status) {
+    case 'submitted':
+      return <Badge variant="info">Submitted</Badge>
+    case 'acknowledged':
+      return <Badge variant="warning">Acknowledged</Badge>
+    case 'under_review':
+      return <Badge variant="warning">Under Review</Badge>
+    case 'resolved':
+      return <Badge variant="success">Resolved</Badge>
+    case 'rejected':
+      return <Badge variant="destructive">Rejected</Badge>
+    case 'closed':
+      return <Badge variant="secondary">Closed</Badge>
+    default:
+      return <Badge variant="secondary">Draft</Badge>
+  }
+}
+
 export function Dashboard() {
-  const { data, isLoading, error, refetch } = useDashboard()
   const [dateRange, setDateRange] = useState('30d')
 
   const daysForRange = (range: string) => {
@@ -95,6 +156,7 @@ export function Dashboard() {
     }
   }
 
+  const metricsQuery = useDashboard()
   const { data: settlementTrends, isLoading: settlementLoading } = useSettlementTrends({
     days: daysForRange(dateRange),
   })
@@ -103,11 +165,18 @@ export function Dashboard() {
   })
   const { data: partnerPerformance, isLoading: partnerLoading } = usePartnerPerformance()
   const { data: partnerDiscrepancies, isLoading: discrepanciesLoading } = usePartnerDiscrepancies()
+  const uploadsQuery = useUploads({ page: 1, pageSize: 5 })
+  const runsQuery = useReconciliationRuns()
+  const discrepanciesQuery = useDiscrepancies({ page: 1, page_size: 5 })
+  const claimsQuery = useClaims({ page: 1, page_size: 5 })
 
-  const analyticsLoading =
-    settlementLoading || matchingLoading || partnerLoading || discrepanciesLoading
+  const data = metricsQuery.data
+  const metricsLoading =
+    metricsQuery.isLoading || settlementLoading || matchingLoading || partnerLoading || discrepanciesLoading
 
-  if (isLoading || analyticsLoading) {
+  const analyticsLoading = metricsLoading
+
+  if (metricsQuery.isLoading || analyticsLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[...Array(8)].map((_, i) => (
@@ -122,11 +191,11 @@ export function Dashboard() {
     )
   }
 
-  if (error) {
+  if (metricsQuery.error) {
     return (
-      <Alert variant="destructive" onRetry={refetch} retryLabel="Retry">
+      <Alert variant="destructive" onRetry={() => void metricsQuery.refetch()} retryLabel="Retry">
         <AlertTitle>Failed to load dashboard</AlertTitle>
-        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(metricsQuery.error)}</AlertDescription>
       </Alert>
     )
   }
@@ -143,6 +212,10 @@ export function Dashboard() {
   }
 
   const metrics = data
+  const uploads = uploadsQuery.data?.uploads ?? []
+  const runs = (runsQuery.data ?? []).slice(0, 5)
+  const discrepanciesList = (discrepanciesQuery.data ?? []).slice(0, 5)
+  const claims = (claimsQuery.data ?? []).slice(0, 5)
 
   return (
     <div className="space-y-8">
@@ -172,7 +245,7 @@ export function Dashboard() {
             </Select>
           </div>
           <Button
-            onClick={() => refetch()}
+            onClick={() => void metricsQuery.refetch()}
             size="sm"
             className="flex items-center gap-2"
           >
@@ -180,12 +253,6 @@ export function Dashboard() {
               <RefreshCw className="h-3.5 w-3.5" />
               <span>Refresh</span>
             </span>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href="#">
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              <span>Export</span>
-            </a>
           </Button>
         </div>
       </div>
@@ -219,14 +286,14 @@ export function Dashboard() {
         <KPICard
           title="Expected Settlement"
           value={formatCurrencyINR(metrics.total_expected)}
-          subtitle="Orders × expected net"
+          subtitle="Across completed runs"
           icon={Coins}
           trend={{ label: 'Total expected', positive: true }}
         />
         <KPICard
-          title="Actual Settlement"
+          title="Received Amount"
           value={formatCurrencyINR(metrics.total_received)}
-          subtitle="Amounts actually received"
+          subtitle="Across completed runs"
           icon={Coins}
           trend={{ label: 'Total received', positive: Number(metrics.total_received) > 0 }}
         />
@@ -239,7 +306,7 @@ export function Dashboard() {
         <KPICard
           title="Pending Claims"
           value={metrics.active_claims.toLocaleString()}
-          subtitle="Ready for review"
+          subtitle="Not closed or rejected"
           icon={FileText}
           trend={{ label: 'Recovery potential', positive: Number(metrics.verified_claimable) > 0 }}
         />
@@ -389,191 +456,176 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Operational Section */}
+      {/* Operational Section — live data */}
       <Separator />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Uploads */}
         <Card className="col-span-1 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2.5">
             <div className="flex items-center gap-2">
               <CardTitle className="text-sm font-medium">Recent Uploads</CardTitle>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href="/uploads">View all</a>
+              <Link to="/uploads">View all</Link>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-[240px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-1/3">File</TableHead>
-                    <TableHead className="w-1/6">Partner</TableHead>
-                    <TableHead className="w-1/6">Type</TableHead>
-                    <TableHead className="w-1/6">Rows</TableHead>
-                    <TableHead className="w-1/6">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Amazon Orders Dec 2024">Amazon Orders Dec 2024</TableCell>
-                    <TableCell>Amazon</TableCell>
-                    <TableCell>Orders</TableCell>
-                    <TableCell className="text-right">1,250</TableCell>
-                    <TableCell>
-                      <Badge variant="success">Parsed</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Flipkart Settlements Q4">Flipkart Settlements Q4</TableCell>
-                    <TableCell>Flipkart</TableCell>
-                    <TableCell>Settlements</TableCell>
-                    <TableCell className="text-right">890</TableCell>
-                    <TableCell>
-                      <Badge variant="warning">Mapping</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Myntra Freight Invoices">Myntra Freight Invoices</TableCell>
-                    <TableCell>Myntra</TableCell>
-                    <TableCell>Freight</TableCell>
-                    <TableCell className="text-right">445</TableCell>
-                    <TableCell>
-                      <Badge variant="success">Normalized</Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+            {uploads.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
+                No uploads yet.
+              </div>
+            ) : (
+              <div className="overflow-auto max-h-[240px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-1/3">File</TableHead>
+                      <TableHead className="w-1/6">Type</TableHead>
+                      <TableHead className="w-1/6">Rows</TableHead>
+                      <TableHead className="w-1/6">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {uploads.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="truncate-title" title={u.original_filename}>
+                          {u.original_filename}
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {u.document_type.replace(/_/g, ' ')}
+                        </TableCell>
+                        <TableCell className="text-right">{u.row_count ?? '—'}</TableCell>
+                        <TableCell>{uploadStatusBadge(u.status)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Recent Reconciliation Runs */}
         <Card className="col-span-1 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2.5">
             <div className="flex items-center gap-2">
               <CardTitle className="text-sm font-medium">Recent Reconciliation Runs</CardTitle>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href="/reconciliation">View all</a>
+              <Link to="/reconciliation">View all</Link>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-[240px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-1/3">Run Name</TableHead>
-                    <TableHead className="w-1/6">Type</TableHead>
-                    <TableHead className="w-1/6">Matched</TableHead>
-                    <TableHead className="w-1/6">Discrepancies</TableHead>
-                    <TableHead className="w-1/6">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Dec Orders vs Settlements">Dec Orders vs Settlements</TableCell>
-                    <TableCell>Orders → Settlements</TableCell>
-                    <TableCell className="text-right text-green-600">1,142</TableCell>
-                    <TableCell className="text-right text-red-600">23</TableCell>
-                    <TableCell>
-                      <Badge variant="success">Completed</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Nov COD vs Remittances">Nov COD vs Remittances</TableCell>
-                    <TableCell>COD → Remittances</TableCell>
-                    <TableCell className="text-right text-green-600">867</TableCell>
-                    <TableCell className="text-right text-red-600">12</TableCell>
-                    <TableCell>
-                      <Badge variant="success">Completed</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="Oct Freight Reconciliation">Oct Freight Reconciliation</TableCell>
-                    <TableCell>Orders → Freight</TableCell>
-                    <TableCell className="text-right text-green-600">412</TableCell>
-                    <TableCell className="text-right text-red-600">8</TableCell>
-                    <TableCell>
-                      <Badge variant="warning">Running</Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+            {runs.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
+                No reconciliation runs yet.
+              </div>
+            ) : (
+              <div className="overflow-auto max-h-[240px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-1/3">Run</TableHead>
+                      <TableHead className="w-1/6">Matched</TableHead>
+                      <TableHead className="w-1/6">Discrepancies</TableHead>
+                      <TableHead className="w-1/6">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {runs.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="truncate-title" title={r.name}>
+                          {r.name}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600">
+                          {r.status === 'completed' ? r.matched_count.toLocaleString() : '—'}
+                        </TableCell>
+                        <TableCell className="text-right text-red-600">
+                          {r.status === 'completed' ? r.discrepancy_count.toLocaleString() : '—'}
+                        </TableCell>
+                        <TableCell>{runStatusBadge(r.status)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Pending items row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="col-span-1 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2.5">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-sm font-medium">Pending Match Reviews</CardTitle>
+              <CardTitle className="text-sm font-medium">Latest Discrepancies</CardTitle>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href="/match-review">Review all</a>
+              <Link to="/discrepancies">View all</Link>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-[192px]">
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="ORD-2024-1128">ORD-2024-1128</TableCell>
-                    <TableCell className="text-right">Amazon</TableCell>
-                    <TableCell className="text-right">₹2,499</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="warning">Low confidence</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="ORD-2024-1135">ORD-2024-1135</TableCell>
-                    <TableCell className="text-right">Flipkart</TableCell>
-                    <TableCell className="text-right">₹1,850</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="warning">Medium confidence</Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+            {discrepanciesList.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
+                No discrepancies recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-auto max-h-[192px]">
+                <Table>
+                  <TableBody>
+                    {discrepanciesList.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="truncate-title" title={d.order_reference}>
+                          {d.order_reference}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ₹{Number(d.difference_amount).toLocaleString('en-IN')}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {discrepancyStatusBadge(String(d.status))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="col-span-1 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between pb-2.5">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-sm font-medium">Pending Claims</CardTitle>
+              <CardTitle className="text-sm font-medium">Latest Claims</CardTitle>
             </div>
             <Button variant="outline" size="sm" asChild>
-              <a href="/claims">View all</a>
+              <Link to="/claims">View all</Link>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-auto max-h-[192px]">
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="CLM-A1B2C3D4">CLM-A1B2C3D4</TableCell>
-                    <TableCell className="text-right">Amazon</TableCell>
-                    <TableCell className="text-right text-green-600">₹3,200</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="warning">Submitted</Badge>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="truncate-title" title="CLM-E5F6G7H8">CLM-E5F6G7H8</TableCell>
-                    <TableCell className="text-right">Meesho</TableCell>
-                    <TableCell className="text-right text-green-600">₹1,450</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="warning">Under Review</Badge>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+            {claims.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
+                No claims recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-auto max-h-[192px]">
+                <Table>
+                  <TableBody>
+                    {claims.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="truncate-title" title={c.claim_reference}>
+                          {c.claim_reference}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600">
+                          {formatCurrencyINR(c.claim_amount)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {claimStatusBadge(String(c.status))}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

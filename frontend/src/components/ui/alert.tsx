@@ -70,13 +70,13 @@ export function Alert({
   )
 }
 
-export interface AlertDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {}
+export interface AlertDescriptionProps extends React.HTMLAttributes<HTMLDivElement> {}
 export function AlertDescription({
   className,
   ...props
 }: AlertDescriptionProps) {
   return (
-    <p className={cn('text-sm', className)} {...props} />
+    <div className={cn('text-sm', className)} {...props} />
   )
 }
 

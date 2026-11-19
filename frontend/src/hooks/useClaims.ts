@@ -1,6 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { claimService } from '@/services/claims'
 import type { ClaimCreateRequest, ClaimUpdateRequest } from '@/services/claims'
+import { invalidateFinancialData } from '@/lib/invalidation'
 
 export function useClaims(params?: {
   status?: string
@@ -19,7 +20,7 @@ export function useCreateClaim() {
   return useMutation({
     mutationFn: (data: ClaimCreateRequest) => claimService.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claims'] })
+      invalidateFinancialData(queryClient)
     },
   })
 }
@@ -31,7 +32,7 @@ export function useUpdateClaim() {
     mutationFn: ({ id, data }: { id: string; data: ClaimUpdateRequest }) =>
       claimService.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claims'] })
+      invalidateFinancialData(queryClient)
     },
   })
 }

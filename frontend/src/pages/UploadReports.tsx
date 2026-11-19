@@ -1,23 +1,25 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useUploadFile, usePartners, useUploads } from '@/hooks/useUploads'
+import { useNavigate, Link } from 'react-router-dom'
+import { useUploadFile, useProcessUpload, useUploads } from '@/hooks/useUploads'
+import { usePartners } from '@/hooks/usePartners'
 import { truncate, cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
 } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  Upload, FileX, Plus, Loader2, CheckCircle2, AlertCircle,
-  ExternalLink
+  Upload, FileX, Loader2, CheckCircle2, AlertCircle, RefreshCw, Play
 } from 'lucide-react'
 import { toast } from 'sonner'
+import type { UploadResponse } from '@/types'
 
 const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -26,33 +28,54 @@ const ACCEPTED_TYPES = ['text/csv', 'application/vnd.openxmlformats-officedocume
 const DOCUMENT_TYPES = [
   { value: 'orders', label: 'Orders' },
   { value: 'settlements', label: 'Settlements' },
-  { value: 'freight_invoices', label: 'Freight Invoices' },
   { value: 'cod_remittances', label: 'COD Remittances' },
+  { value: 'freight_invoices', label: 'Freight Invoices' },
   { value: 'returns', label: 'Returns' },
+  { value: 'warehouse_scans', label: 'Warehouse Scans' },
 ]
+
+const statusBadge = (status: string) => {
+  switch (status) {
+    case 'processed':
+      return <Badge variant="success">Processed</Badge>
+    case 'failed':
+      return <Badge variant="destructive">Failed</Badge>
+    case 'mapped':
+      return <Badge variant="warning">Mapped</Badge>
+    case 'processing':
+      return (
+        <Badge variant="warning" className="gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" /> Processing
+        </Badge>
+      )
+    default:
+      return <Badge variant="secondary">{status === 'uploaded' || status === 'parsed' ? 'Parsed' : status}</Badge>
+  }
+}
 
 export function UploadReports() {
   const navigate = useNavigate()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [uploadStage, setUploadStage] = useState<'idle' | 'validating' | 'uploading' | 'processing' | 'completed' | 'error'>('idle')
-  const [uploadProgress, setUploadProgress] = useState(0)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
   const [validationResult, setValidationResult] = useState<{ valid: boolean; errors: string[]; warnings: string[] } | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [partnerId, setPartnerId] = useState<string>('')
   const [documentType, setDocumentType] = useState<string>('')
-  const { data: partners } = usePartners()
-  const { refetch: refetchUploads } = useUploads()
+
+  const { data: partners = [] } = usePartners()
+  const uploadsQuery = useUploads({ page: 1, pageSize: 50 })
+  const uploads = uploadsQuery.data?.uploads ?? []
+  const totalUploads = uploadsQuery.data?.total ?? uploads.length
 
   const uploadMutation = useUploadFile()
-
+  const processMutation = useProcessUpload()
   const isUploading = uploadMutation.isPending
-  const isDisabled = !selectedFile || !documentType || isUploading || uploadStage === 'uploading'
+  const canSubmit = !!selectedFile && !!documentType && !isUploading
 
   const validateFile = useCallback((file: File): { valid: boolean; errors: string[]; warnings: string[] } => {
     const errors: string[] = []
     const warnings: string[] = []
 
-    if (!ACCEPTED_TYPES.includes(file.type)) {
+    if (file.type && !ACCEPTED_TYPES.includes(file.type)) {
       errors.push(`Unsupported file type: ${file.type}. Only CSV and XLSX files are supported.`)
     }
 
@@ -89,89 +112,56 @@ export function UploadReports() {
   }, [])
 
   const handleFileSelect = useCallback((file: File) => {
-    setError(null)
+    setSubmissionError(null)
     setValidationResult(null)
-    setUploadStage('idle')
-    setUploadProgress(0)
-
     const validation = validateFile(file)
     setValidationResult(validation)
-
     if (validation.valid) {
       setSelectedFile(file)
     } else {
       setSelectedFile(null)
-      setError(validation.errors.join(' '))
+      setSubmissionError(validation.errors.join(' '))
     }
   }, [validateFile])
 
   const removeFile = useCallback(() => {
     setSelectedFile(null)
     setValidationResult(null)
-    setError(null)
-    setUploadStage('idle')
-    setUploadProgress(0)
+    setSubmissionError(null)
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedFile) return
-
-    setError(null)
-    setUploadStage('validating')
-    setUploadProgress(0)
-
-    setTimeout(() => {
-      setUploadStage('uploading')
-    }, 500)
-
+  const handleSubmit = async () => {
+    if (!selectedFile || !documentType) return
+    setSubmissionError(null)
     try {
-      const result = await uploadMutation.mutateAsync({
+      const created = await uploadMutation.mutateAsync({
         file: selectedFile,
         document_type: documentType,
         partner_id: partnerId || undefined,
       })
-
-      setUploadStage('processing')
-      setUploadProgress(100)
-
-      await refetchUploads()
-      setTimeout(() => {
-        setUploadStage('completed')
-        toast.success(`File "${result.original_filename}" uploaded and queued for processing.`)
-        navigate(`/uploads/${result.id}/mapping`)
-      }, 1000)
-    } catch (err: unknown) {
-      const e = err as any
-      const data = e?.response?.data
-      let msg = 'Upload failed. Please try again.'
-      if (data?.detail) {
-        if (Array.isArray(data.detail)) {
-          msg = data.detail.map((d: any) => d.msg).join('; ')
-        } else {
-          msg = String(data.detail)
-        }
-      } else if (data?.message) {
-        msg = data.message
-      }
-      setError(msg)
-      setUploadStage('error')
-      setUploadProgress(0)
-      toast.error(msg)
+      removeFile()
+      toast.success(`File "${created.original_filename}" uploaded and parsed. Review the column mapping next.`)
+      navigate(`/uploads/${created.id}/mapping`)
+    } catch (err) {
+      setSubmissionError(extractErrorMessage(err))
+      toast.error(extractErrorMessage(err))
     }
   }
 
-  const retryUpload = useCallback(() => {
-    if (!selectedFile) return
-    setError(null)
-    setUploadStage('uploading')
-    setUploadProgress(0)
-    handleSubmit(new Event('submit') as unknown as React.FormEvent)
-  }, [selectedFile, handleSubmit])
-
-  const fileSize = selectedFile?.size || 0
-  const fileSizeKB = (fileSize / 1024).toFixed(1)
-  const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+  const handleReprocess = async (upload: UploadResponse) => {
+    try {
+      const done = await processMutation.mutateAsync(upload.id)
+      if (done.status === 'processed') {
+        toast.success(`Re-processed "${done.original_filename}": ${done.processed_count} rows normalized.`)
+      } else {
+        toast.error(
+          `Processing finished with status "${done.status}"${done.error_message ? `: ${done.error_message}` : ''}.`
+        )
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -180,15 +170,17 @@ export function UploadReports() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Upload Financial Reports</h1>
           <p className="text-muted-foreground">
-            Upload marketplace, payment gateway, COD, logistics and return reports for reconciliation.
+            Upload marketplace, payment gateway, COD, logistics, return and warehouse-scan reports for reconciliation.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <a href="/uploads">View History</a>
-          </Button>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" /> New Upload
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void uploadsQuery.refetch()}
+            className="flex items-center gap-1.5"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </Button>
         </div>
       </div>
@@ -199,34 +191,32 @@ export function UploadReports() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Select Report</CardTitle>
+              <CardTitle>New Upload</CardTitle>
               <CardDescription>
-                Choose a partner and report type, then upload your file.
-              AI-assisted column mapping will be available after upload.
+                Choose a partner and report type, then upload your file. Column mapping review
+                opens automatically after parsing.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Partner & Report Type selection */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="partner">Partner</Label>
+                  <Label htmlFor="partner">Partner (optional)</Label>
                   <Select
                     value={partnerId}
-                    onValueChange={(val) => setPartnerId(val as string)}
+                    onValueChange={(val) => setPartnerId(val)}
                     disabled={isUploading}
                   >
                     <Select.Trigger className="w-full">
-                      <Select.Value placeholder="Select partner…" />
+                      <Select.Value placeholder={partners.length ? 'No partner selected' : 'No partners yet'} />
                     </Select.Trigger>
                     <Select.Content>
-                      {(partners || []).map((p) => (
+                      <Select.Item value="" className="text-muted-foreground">
+                        No partner
+                      </Select.Item>
+                      {partners.map((p) => (
                         <Select.Item key={p.id} value={p.id}>{p.name}</Select.Item>
                       ))}
-                      {(partners || []).length === 0 && (
-                        <Select.Item value="" disabled>
-                          No partners available
-                        </Select.Item>
-                      )}
                     </Select.Content>
                   </Select>
                 </div>
@@ -235,7 +225,7 @@ export function UploadReports() {
                   <Label htmlFor="document_type">Report Type</Label>
                   <Select
                     value={documentType}
-                    onValueChange={(val) => setDocumentType(val as string)}
+                    onValueChange={(val) => setDocumentType(val)}
                     disabled={isUploading}
                   >
                     <Select.Trigger className="w-full">
@@ -256,7 +246,7 @@ export function UploadReports() {
                 onDrop={onDrop}
                 className={cn(
                   'relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 min-h-[220px]',
-                  uploadStage === 'uploading' || uploadStage === 'processing'
+                  isUploading
                     ? 'border-primary bg-primary/50'
                     : 'border-border bg-secondary/50 hover:border-primary/50 hover:bg-primary/10',
                   isUploading && 'pointer-events-none opacity-60'
@@ -265,7 +255,7 @@ export function UploadReports() {
                 <div className="flex flex-col items-center justify-center gap-3 pointer-events-none z-10">
                   <Upload className="h-10 w-10 text-muted-foreground" />
                   <p className="text-sm font-medium text-foreground">
-                    Drag & drop your file here
+                    Drag &amp; drop your file here
                   </p>
                   <p className="text-xs text-muted-foreground">
                     CSV or XLSX · Max {MAX_FILE_SIZE_MB} MB
@@ -295,7 +285,7 @@ export function UploadReports() {
               {/* Selected file details */}
               {selectedFile && (
                 <div className="bg-card border border-border rounded-lg p-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-muted overflow-hidden shrink-0">
                       <span className="flex h-full w-full items-center justify-center text-xs font-medium text-muted-foreground">
                         {selectedFile.name.charAt(0).toUpperCase()}
@@ -306,7 +296,7 @@ export function UploadReports() {
                         {truncate(selectedFile.name, 40)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {parseFloat(fileSizeMB) > 1 ? `${fileSizeMB} MB` : `${fileSizeKB} KB`} · {selectedFile.type}
+                        {(selectedFile.size / 1024).toFixed(1)} KB · {selectedFile.type || 'csv/xlsx'}
                       </p>
                     </div>
                     <button
@@ -321,147 +311,142 @@ export function UploadReports() {
               )}
 
               {/* Validation results */}
-              {validationResult && (
-                <div className={cn(
-                  'p-3 rounded-lg text-sm border',
-                  validationResult.valid ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'
-                )}>
-                  <div className="flex items-start gap-2">
-                    {validationResult.valid ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      {validationResult.valid ? (
-                        <p className="font-medium text-green-800">File passed validation</p>
-                      ) : (
-                        <p className="font-medium text-red-800">Validation failed</p>
-                      )}
-                      {validationResult.errors.length > 0 && (
-                        <ul className="mt-1 list-disc list-inside text-xs text-red-700">
-                          {validationResult.errors.map((e, i) => (
-                            <li key={i}>{e}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {validationResult.warnings.length > 0 && (
-                        <ul className="mt-1 list-disc list-inside text-xs text-amber-700">
-                          {validationResult.warnings.map((e, i) => (
-                            <li key={i}>{e}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
+              {validationResult && validationResult.warnings.length > 0 && (
+                <div className="p-3 rounded-lg text-sm border bg-amber-50 border-amber-100 text-amber-800">
+                  {validationResult.warnings.join(' ')}
                 </div>
               )}
 
-              {error && (
-                <Alert variant="destructive">
+              {submissionError && (
+                <Alert variant="destructive" onRetry={removeFile} retryLabel="Clear file">
                   <AlertTitle>Upload Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{submissionError}</AlertDescription>
                 </Alert>
               )}
 
               {/* Actions */}
-              <div className="flex flex-col sm:flex-row gap-3 justify-between items-end">
-                <div className="flex items-center gap-2">
-                  {isUploading && (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-                      <span className="text-sm text-muted-foreground">Uploading…</span>
-                    </div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-end items-center">
+                {isUploading && (
+                  <div className="flex items-center gap-2 mr-auto">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    <span className="text-sm text-muted-foreground">
+                      Uploading and parsing on the server…
+                    </span>
+                  </div>
+                )}
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="flex items-center gap-2"
+                >
+                  {isUploading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Uploading…
+                    </span>
+                  ) : (
+                    <span>Upload Report</span>
                   )}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={removeFile}
-                    disabled={isUploading || !selectedFile}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={isDisabled}
-                    className="flex items-center gap-2"
-                  >
-                    {uploadStage === 'uploading' ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Uploading…
-                      </span>
-                    ) : uploadStage === 'processing' ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing…
-                      </span>
-                    ) : (
-                      <span>Upload Report</span>
-                    )}
-                  </Button>
-                </div>
+                </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Progress section */}
-          {(uploadStage === 'uploading' || uploadStage === 'processing') && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Upload Progress</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span>{uploadStage === 'uploading' ? 'Uploading file…' : 'Processing file…'}</span>
-                  <span>{uploadProgress}%</span>
+          {/* History */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle>Upload History</CardTitle>
+                <CardDescription>
+                  All files in this organization ({totalUploads}). Status polls automatically while
+                  files are still moving through the pipeline.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {uploads.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
+                  No uploads yet — add your first file above.
                 </div>
-                <Progress value={uploadProgress} />
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>File</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Partner</TableHead>
+                      <TableHead className="text-right">Rows</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="min-w-[240px]">Details</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {uploads.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium truncate-title max-w-[200px]" title={u.original_filename}>
+                          {u.original_filename}
+                        </TableCell>
+                        <TableCell className="capitalize text-xs">
+                          {u.document_type.replace(/_/g, ' ')}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          —
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {u.row_count ?? '—'}
+                        </TableCell>
+                        <TableCell>{statusBadge(u.status)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {u.status === 'processed'
+                            ? `${u.processed_count} processed · ${u.rejected_count} rejected · ${u.duplicate_count} duplicates`
+                            : u.status === 'failed'
+                              ? (u.error_message ?? 'Processing failed')
+                              : 'Awaiting mapping approval'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {(u.status === 'parsed' || u.status === 'uploaded' || u.status === 'mapped') && (
+                              <Button variant="outline" size="sm" asChild>
+                                <Link to={`/uploads/${u.id}/mapping`}>
+                                  {u.status === 'mapped' ? 'Continue Mapping' : 'Map Columns'}
+                                </Link>
+                              </Button>
+                            )}
+                            {(u.status === 'processed' || u.status === 'failed') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleReprocess(u)}
+                                disabled={processMutation.isPending}
+                                title="Re-run normalization with the approved mapping"
+                              >
+                                {processMutation.isPending && processMutation.variables === u.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                ) : (
+                                  <Play className="h-4 w-4 mr-1" />
+                                )}
+                                Re-process
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Completed state */}
-          {uploadStage === 'completed' && (
-            <Card className="border-green-200 bg-green-50">
-              <CardHeader className="flex items-center gap-3">
-                <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
-                <CardTitle>Upload Complete</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">Your file has been uploaded and is being processed.</p>
-                <div className="mt-4 flex gap-2">
-                  <Button variant="outline" asChild>
-                    <a href="/uploads">View Upload History</a>
-                  </Button>
-                  <Button asChild onClick={() => navigate('/mapping')}>
-                    Review Column Mapping <ExternalLink className="ml-1 h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Error state with retry */}
-          {uploadStage === 'error' && selectedFile && (
-            <Card className="border-red-200 bg-red-50">
-              <CardHeader className="flex items-center gap-3">
-                <AlertCircle className="h-6 w-6 text-red-600 shrink-0" />
-                <CardTitle>Upload Failed</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm">{error}</p>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={removeFile}>
-                    Remove File
-                  </Button>
-                  <Button onClick={retryUpload}>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Retry Upload
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+          {uploadsQuery.error && (
+            <Alert
+              variant="destructive"
+              onRetry={() => void uploadsQuery.refetch()}
+              retryLabel="Retry"
+            >
+              <AlertTitle>Failed to load upload history</AlertTitle>
+              <AlertDescription>{extractErrorMessage(uploadsQuery.error)}</AlertDescription>
+            </Alert>
           )}
         </div>
 
@@ -469,109 +454,42 @@ export function UploadReports() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Supported Formats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
-                    <Upload className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">CSV & XLSX</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Upload marketplace order, settlement, freight, COD remittance and return reports.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
-                    <div className="w-3 h-3 bg-primary rounded-full" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">Max 50 MB</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Files larger than 50 MB will be rejected. Split large files before uploading.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-primary shrink-0">
-                    <div className="w-3 h-3 bg-primary rounded-full" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">UTF-8 Encoding</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Ensure files are saved with UTF-8 encoding for proper character handling.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Data Preparation Tips</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">Include header row</h3>
-                    <p className="text-xs text-muted-foreground">
-                      The first row should contain column names for AI-assisted mapping.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">Consistent formatting</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Use consistent date (YYYY-MM-DD) and currency formats across all files.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-secondary/50 flex items-center justify-center text-green-600 shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">Partner identification</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Select the correct partner so mappings can be saved as reusable templates.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Upload Status</CardTitle>
+              <CardTitle>Pipeline</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Amazon Orders Dec 2024</span>
-                  <Badge variant="success">Parsed</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Flipkart Settlements Q4</span>
-                  <Badge variant="warning">Mapping</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Myntra Freight Invoices</span>
-                  <Badge variant="success">Normalized</Badge>
-                </div>
-              </div>
+              <ol className="space-y-3 text-sm">
+                {[
+                  'Upload & parse — headers and row samples are stored.',
+                  'Column mapping — map source headers to canonical fields, approve.',
+                  'Normalization — dates, amounts and aliases are cleaned; rows land in engine tables.',
+                  'Reconciliation — create and execute a run per stream in the Reconciliation tab.',
+                  'Review — discrepancies and draft claims appear in their tabs automatically.',
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                      {i + 1}
+                    </span>
+                    <span className="text-muted-foreground">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Supported Formats</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <p>CSV and XLSX, UTF-8, with a header row. Max {MAX_FILE_SIZE_MB} MB.</p>
+              <p className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                Order reference is required for every report type; the engine matches records on it.
+              </p>
+              <p className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                Rejected rows are counted, never silently dropped — check the history table.
+              </p>
             </CardContent>
           </Card>
         </div>

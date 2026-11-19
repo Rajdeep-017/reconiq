@@ -153,7 +153,7 @@ class TestUploadFile:
         data = response.json()
         assert data["original_filename"] == "orders.csv"
         assert data["document_type"] == "orders"
-        assert data["status"] == "mapping_pending"
+        assert data["status"] == "parsed"
 
     def test_upload_without_partner_id_returns_201(
         self, client: TestClient, auth_headers_a: dict[str, str]

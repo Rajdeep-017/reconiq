@@ -25,18 +25,11 @@ class UploadStatus(str, enum.Enum):
     """File processing status lifecycle."""
 
     UPLOADED = "uploaded"
-    VALIDATING = "validating"
-    VALIDATED = "validated"
-    MAPPING_PENDING = "mapping_pending"
-    MAPPING_APPROVED = "mapping_approved"
+    PARSED = "parsed"
+    MAPPED = "mapped"
     PROCESSING = "processing"
-    RECONCILING = "reconciling"
-    COMPLETED = "completed"
-    # Failure states
-    VALIDATION_FAILED = "validation_failed"
-    MAPPING_FAILED = "mapping_failed"
-    PROCESSING_FAILED = "processing_failed"
-    RECONCILIATION_FAILED = "reconciliation_failed"
+    PROCESSED = "processed"
+    FAILED = "failed"
 
 
 class DocumentType(str, enum.Enum):
@@ -47,6 +40,7 @@ class DocumentType(str, enum.Enum):
     FREIGHT_INVOICES = "freight_invoices"
     COD_REMITTANCES = "cod_remittances"
     RETURNS = "returns"
+    WAREHOUSE_SCANS = "warehouse_scans"
 
 
 class Upload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -81,6 +75,17 @@ class Upload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=UploadStatus.UPLOADED,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Normalization result counts
+    processed_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    rejected_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    duplicate_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     # Relationships
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])

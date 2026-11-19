@@ -13,32 +13,54 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { formatCurrencyINR } from '@/lib/utils'
 import { useDiscrepancies, useUpdateDiscrepancy } from '@/hooks/useDiscrepancies'
-import { Download } from 'lucide-react'
+import { toast } from 'sonner'
+import { extractErrorMessage } from '@/lib/api'
+import { Download, RefreshCw } from 'lucide-react'
 
+/** Full backend DiscrepancyType vocabulary — the first nine are legacy
+ * categories; the last seven are the engine-emitted stream types (Phase D). */
 const DISCREPANCY_CATEGORIES = [
   'short_payment',
+  'short_paid',
   'missing_settlement',
   'unpaid_order',
+  'unpaid_past_due',
   'missing_cod_remittance',
   'freight_overcharge',
+  'freight_overcharged',
+  'missing_freight_invoice',
+  'duplicate_awb_billing',
+  'return_not_received',
+  'settled_late',
   'incorrect_freight_weight',
   'incorrect_freight_zone',
   'return_refund_mismatch',
   'duplicate_deduction',
+  'excess_payment',
+  'other',
 ]
 
 const DISCREPANCY_STATUSES = ['detected', 'verified', 'disputed', 'resolved', 'dismissed']
 
 const categoryLabels: Record<string, string> = {
   short_payment: 'Short Payment',
+  short_paid: 'Short Paid',
   missing_settlement: 'Missing Settlement',
   unpaid_order: 'Unpaid Order',
+  unpaid_past_due: 'Unpaid Past Due',
   missing_cod_remittance: 'Missing COD Remittance',
   freight_overcharge: 'Freight Overcharge',
+  freight_overcharged: 'Freight Overcharged',
+  missing_freight_invoice: 'Missing Freight Invoice',
+  duplicate_awb_billing: 'Duplicate AWB Billing',
+  return_not_received: 'Return Not Received',
+  settled_late: 'Settled Late',
   incorrect_freight_weight: 'Incorrect Freight Weight',
   incorrect_freight_zone: 'Incorrect Freight Zone',
   return_refund_mismatch: 'Return/Refund Mismatch',
-  duplicate_deduction: 'Duplicate Deduction',
+  duplicate_deduction: 'Deduction',
+  excess_payment: 'Excess Payment',
+  other: 'Other',
 }
 
 export function Discrepancies() {
@@ -47,7 +69,7 @@ export function Discrepancies() {
   const [statusFilter, setStatusFilter] = useState('')
   const [dateFilter, setDateFilter] = useState('')
 
-  const { data: discrepancies = [], isLoading, error } = useDiscrepancies({
+  const { data: discrepancies = [], isLoading, error, refetch } = useDiscrepancies({
     page: 1,
     page_size: 100,
   })
@@ -73,9 +95,9 @@ export function Discrepancies() {
 
   if (error) {
     return (
-      <Alert variant="destructive">
+      <Alert variant="destructive" onRetry={() => void refetch()} retryLabel="Retry">
         <AlertTitle>Failed to load discrepancies</AlertTitle>
-        <AlertDescription>{String(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
       </Alert>
     )
   }
@@ -120,10 +142,35 @@ export function Discrepancies() {
   const updateDiscrepancy = async (id: string, status: string) => {
     try {
       await updateMutation.mutateAsync({ id, data: { status } })
+      toast.success(`Discrepancy marked as ${status}.`)
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.message || 'Update failed'
-      alert(msg)
+      toast.error(extractErrorMessage(err))
     }
+  }
+
+  const exportCsv = () => {
+    const rows = [
+      ['order_reference', 'category', 'status', 'expected', 'actual', 'difference', 'explanation'],
+      ...discrepancies.map((d) => [
+        String(d.order_reference),
+        categoryLabels[d.discrepancy_type] ?? d.discrepancy_type,
+        d.status,
+        String(d.expected_amount),
+        String(d.actual_amount),
+        String(d.difference_amount),
+        String(d.explanation ?? ''),
+      ]),
+    ]
+    const csv = rows
+      .map((r) => r.map((v) => (v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v)).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'discrepancies.csv'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -136,8 +183,11 @@ export function Discrepancies() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" /> Export
+          <Button variant="outline" size="sm" onClick={exportCsv}>
+            <Download className="h-4 w-4 mr-1" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void refetch()} className="flex items-center gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </Button>
         </div>
       </div>
@@ -251,11 +301,9 @@ export function Discrepancies() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle>Detected Discrepancies</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled>
-              View Evidence
-            </Button>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            Evidence lives in the executed run's results (Reconciliation tab).
+          </span>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-auto">
@@ -282,7 +330,7 @@ export function Discrepancies() {
                   </TableRow>
                 ) : (
                   <>
-                    {filtered.map((d: { id: string; order_reference: string; discrepancy_type: string; status: string; expected_amount: string | number; actual_amount: string | number; difference_amount: string | number; created_at: string | null }) => (
+                    {filtered.map((d) => (
                       <TableRow key={d.id}>
                         <TableCell className="font-mono text-sm">{d.id}</TableCell>
                         <TableCell className="font-medium truncate-title" title={d.order_reference}>
@@ -308,24 +356,29 @@ export function Discrepancies() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updateDiscrepancy(d.id, 'verified')}
-                              disabled={updateMutation.isPending}
-                            >
-                              Verify
-                            </Button>
-                            {d.status === 'detected' && (
+                            {(d.status === 'detected' || d.status === 'disputed') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void updateDiscrepancy(d.id, 'verified')}
+                                disabled={updateMutation.isPending}
+                              >
+                                Verify
+                              </Button>
+                            )}
+                            {(d.status === 'detected' || d.status === 'verified') && (
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                onClick={() => updateDiscrepancy(d.id, 'dismissed')}
+                                onClick={() => void updateDiscrepancy(d.id, 'dismissed')}
                                 disabled={updateMutation.isPending}
                               >
                                 Dismiss
                               </Button>
                             )}
+                            {d.status === 'resolved' || d.status === 'dismissed' ? (
+                              <span className="text-xs text-muted-foreground self-center">No actions</span>
+                            ) : null}
                           </div>
                         </TableCell>
                       </TableRow>

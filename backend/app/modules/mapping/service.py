@@ -1,52 +1,96 @@
 """Column mapping service — rule-based + optional AI mapping."""
 from __future__ import annotations
+import re
 import uuid
+
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from app.core.exceptions import NotFoundException, ValidationException
+
+from app.core.exceptions import AppException, NotFoundException, ValidationException
 from app.models.mapping import ColumnMapping, ColumnMappingTemplate
 from app.models.upload import Upload, UploadStatus
 
-# Known aliases → canonical field
+# Known aliases → canonical field. Headers are normalised before lookup, so
+# ``Order ID``, ``order_id``, ``ORDER-ID`` and ``order id `` all match.
 COLUMN_ALIASES: dict[str, str] = {
-    "order id": "order_reference", "order_id": "order_reference",
-    "order no": "order_reference", "order number": "order_reference",
+    # Orders
+    "order id": "order_reference", "order no": "order_reference",
+    "order no.": "order_reference", "order number": "order_reference",
     "order reference": "order_reference", "order ref": "order_reference",
-    "order date": "order_date", "date": "order_date",
-    "awb": "awb_number", "awb number": "awb_number", "tracking number": "awb_number",
+    "order date": "order_date", "ordered date": "order_date", "date": "order_date",
+    "channel": "channel", "marketplace": "channel", "source": "channel",
+    "partner": "partner", "partner name": "partner",
+    "sku": "sku", "seller sku": "sku", "sku code": "sku",
+    "product name": "product_name", "product": "product_name",
+    "item name": "product_name", "description": "product_name",
+    "quantity": "quantity", "qty": "quantity", "units": "quantity",
+    "gross amount": "gross_amount", "gross amt": "gross_amount",
+    "total amount": "gross_amount", "order value": "gross_amount",
+    "discount": "discount", "discount amount": "discount",
     "net amount": "net_amount", "net amt": "net_amount",
-    "gross amount": "gross_amount", "gross amt": "gross_amount", "total amount": "gross_amount",
-    "settlement amount": "actual_received", "net settlement": "actual_received",
-    "commission": "commission", "marketplace fee": "commission",
-    "shipping charges": "shipping_fee", "shipping fee": "shipping_fee",
-    "shipping charge": "shipping_fee", "freight": "shipping_fee",
-    "tcs": "tcs_deducted", "tds": "tds_deducted",
-    "other deductions": "other_fees", "other charges": "other_fees",
-    "discount": "discount", "quantity": "quantity", "qty": "quantity",
-    "sku": "sku", "product name": "product_name", "product": "product_name",
+    "net payable": "net_amount", "net sales": "net_amount",
     "payment method": "payment_method", "payment mode": "payment_method",
-    "status": "status", "order status": "status",
-    "partner": "partner", "channel": "channel",
     "customer city": "customer_city", "city": "customer_city",
     "customer state": "customer_state", "state": "customer_state",
-    "settlement id": "settlement_reference", "settlement date": "settlement_date",
-    "transaction type": "transaction_type",
-    "cod amount": "cod_amount", "remitted amount": "remitted_amount",
-    "utr number": "utr_number", "utr": "utr_number",
+    "status": "status", "order status": "status",
+    # Settlements
+    "settlement id": "settlement_reference", "settlement reference": "settlement_reference",
+    "payout id": "settlement_reference", "payout ref": "settlement_reference",
+    "payout reference": "settlement_reference", "payout_ref": "settlement_reference",
+    "settlement date": "settlement_date",
+    "transaction type": "transaction_type", "type": "transaction_type",
+    "settlement amount": "actual_received", "net settlement": "actual_received",
+    "settled amount": "actual_received", "amount settled": "actual_received",
+    "commission": "commission", "marketplace fee": "commission",
+    "commission fee": "commission", "platform fee": "commission",
+    "shipping charges": "shipping_fee", "shipping fee": "shipping_fee",
+    "shipping charge": "shipping_fee", "freight": "shipping_fee",
+    "tcs": "tcs_deducted", "tcs deducted": "tcs_deducted",
+    "tds": "tds_deducted", "tds deducted": "tds_deducted",
+    "other deductions": "other_fees", "other charges": "other_fees",
+    "other fees": "other_fees",
+    # COD remittances
+    "cod amount": "cod_amount", "cod collected": "cod_amount",
+    "remitted amount": "remitted_amount", "amount remitted": "remitted_amount",
+    "utr number": "utr_number", "utr": "utr_number", "utr no": "utr_number",
     "remittance date": "remittance_date", "remittance id": "remittance_reference",
-    "return id": "return_id_reference", "return date": "return_date",
-    "return reason": "return_reason", "return status": "return_status",
-    "refund amount": "refund_amount", "refund status": "refund_status",
-    "refund date": "refund_date",
-    "invoice id": "invoice_reference", "invoice date": "invoice_date",
-    "courier partner": "courier_partner",
-    "origin pincode": "origin_pincode", "destination pincode": "destination_pincode",
+    "remittance reference": "remittance_reference",
+    # Returns
+    "return id": "return_id_reference", "return reference": "return_id_reference",
+    "return date": "return_date", "returned date": "return_date",
+    "return reason": "return_reason", "reason": "return_reason",
+    "return status": "return_status", "refund amount": "refund_amount",
+    "refund status": "refund_status", "refund date": "refund_date",
+    # Freight
+    "invoice id": "invoice_reference", "invoice no": "invoice_reference",
+    "invoice no.": "invoice_reference", "invoice number": "invoice_reference",
+    "invoice reference": "invoice_reference", "invoice date": "invoice_date",
+    "courier partner": "courier_partner", "courier": "courier_partner",
+    "awb": "awb_number", "awb number": "awb_number", "awb no": "awb_number",
+    "tracking number": "awb_number", "tracking no": "awb_number",
+    "origin pincode": "origin_pincode", "origin pin": "origin_pincode",
+    "destination pincode": "destination_pincode", "destination pin": "destination_pincode",
     "weight": "actual_weight_kg", "weight (kg)": "actual_weight_kg",
+    "actual weight": "actual_weight_kg", "actual weight (kg)": "actual_weight_kg",
     "charged weight": "charged_weight_kg", "charged weight (kg)": "charged_weight_kg",
     "zone": "zone", "rate per kg": "rate_per_kg",
     "freight amount": "freight_amount", "cod charges": "cod_charges",
     "total freight": "total_freight",
+    # Warehouse scans
+    "scan id": "scan_reference", "scan reference": "scan_reference",
+    "scan date": "scan_date", "scan type": "scan_type",
+    "location": "location", "warehouse": "location",
 }
+
+
+def normalise_header(column: str) -> str:
+    """Canonical lookup key for a source header."""
+    normalized = str(column).replace("\ufeff", "").strip().lower()
+    normalized = normalized.replace("_", " ").replace("-", " ")
+    normalized = normalized.replace("₹", "").replace("rs.", "").replace("inr", "")
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    normalized = normalized.rstrip(".")
+    return normalized
 
 
 class MappingService:
@@ -74,7 +118,7 @@ class MappingService:
 
         mappings = {}
         for col in headers:
-            normalized = col.strip().lower().replace("_", " ").replace("-", " ")
+            normalized = normalise_header(col)
             target = COLUMN_ALIASES.get(normalized)
             confidence = 1.0 if target else 0.0
             method = "rule" if target else "unmapped"
@@ -120,10 +164,28 @@ class MappingService:
         self.db.add(mapping)
 
         if approved:
-            upload.status = UploadStatus.MAPPING_APPROVED
+            upload.status = UploadStatus.MAPPED
+            upload.error_message = None
 
         self.db.commit()
         self.db.refresh(mapping)
+
+        # Approval is the trigger for deterministic normalization. Processing
+        # failures are reflected on the upload (status=failed + error_message)
+        # without losing the approved mapping the user just saved.
+        if approved:
+            from app.modules.normalization.service import NormalizationService
+
+            try:
+                NormalizationService(self.db).process_upload(
+                    upload_id, org_id=org_id or upload.org_id
+                )
+            except AppException:
+                self.db.refresh(mapping)
+            except Exception:
+                self.db.rollback()
+                self.db.refresh(mapping)
+
         return mapping
 
     def get_mapping(self, upload_id: uuid.UUID) -> ColumnMapping | None:

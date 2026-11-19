@@ -1,433 +1,507 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import {
   useReconciliationRuns,
   useCreateReconciliationRun,
+  useExecuteReconciliationRun,
 } from '@/hooks/useReconciliation'
+import { reconciliationService, type ReconResultResponse } from '@/services/reconciliation'
 import { useUploads } from '@/hooks/useUploads'
-import { formatCurrencyINR } from '@/lib/utils'
-import { reconciliationService } from '@/services/reconciliation'
+import { formatCurrencyINR, cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { extractErrorMessage } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { Plus } from 'lucide-react'
+import { Play, RotateCcw, Plus, Loader2, Eye, RefreshCw, X } from 'lucide-react'
 
-const DOCUMENT_TYPES = [
-  { value: 'orders', label: 'Orders' },
-  { value: 'settlements', label: 'Settlements' },
-  { value: 'freight', label: 'Freight' },
-  { value: 'cod_remittances', label: 'COD Remittances' },
-  { value: 'returns', label: 'Returns' },
+type StreamKey = 'settlement' | 'cod' | 'freight' | 'return'
+
+const STREAMS: {
+  key: StreamKey
+  label: string
+  sourceType: string
+  targetType: string
+  sourceLabel: string
+  targetLabel: string
+}[] = [
+  { key: 'settlement', label: 'Settlements', sourceType: 'orders', targetType: 'settlements', sourceLabel: 'Orders', targetLabel: 'Settlements' },
+  { key: 'cod', label: 'COD Remittances', sourceType: 'orders', targetType: 'cod_remittances', sourceLabel: 'Orders', targetLabel: 'COD Remittances' },
+  { key: 'freight', label: 'Freight Invoices', sourceType: 'orders', targetType: 'freight_invoices', sourceLabel: 'Orders', targetLabel: 'Freight Invoices' },
+  { key: 'return', label: 'Returns vs Warehouse Scans', sourceType: 'returns', targetType: 'warehouse_scans', sourceLabel: 'Returns', targetLabel: 'Warehouse Scans' },
 ]
 
+/** Uploads that can drive an engine: mapping approved and data normalized (or still moving). */
+const USABLE_UPLOAD_STATUSES = ['mapped', 'processing', 'processed']
+
+const runStatusBadge = (s: string) => {
+  switch (s) {
+    case 'completed':
+      return <Badge variant="success">Completed</Badge>
+    case 'running':
+      return <Badge variant="warning">Running</Badge>
+    case 'failed':
+      return <Badge variant="destructive">Failed</Badge>
+    default:
+      return <Badge variant="secondary">Created</Badge>
+  }
+}
+
+const streamStatusBadge = (streamStatus: string | null | undefined) => {
+  if (!streamStatus) return <Badge variant="secondary">{streamStatusLabel('')}</Badge>
+  switch (streamStatus) {
+    case 'settled':
+      return <Badge variant="success">Settled</Badge>
+    case 'short_paid':
+      return <Badge variant="warning">Short Paid</Badge>
+    case 'unpaid_past_due':
+      return <Badge variant="destructive">Unpaid Past Due</Badge>
+    case 'freight_overcharged':
+      return <Badge variant="destructive">Freight Overcharged</Badge>
+    case 'return_not_received':
+      return <Badge variant="destructive">Return Not Received</Badge>
+    case 'settled_late':
+      return <Badge variant="warning">Settled Late</Badge>
+    case 'not_yet_due':
+      return <Badge variant="secondary">Not Yet Due</Badge>
+    case 'missing_freight_invoice':
+      return <Badge variant="warning">Missing Freight Invoice</Badge>
+    default:
+      return <Badge variant="secondary">{streamStatus}</Badge>
+  }
+}
+
+function streamStatusLabel(streamStatus: string | null | undefined): string {
+  if (!streamStatus) return 'No stream status'
+  return streamStatus
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ')
+}
+
+const streamTypeLabel = (reconType: string) =>
+  STREAMS.find((s) => s.key === reconType)?.label ?? reconType
+
 export function ReconciliationWorkspace() {
-  const [dateRange, setDateRange] = useState('30d')
-  const [partnerFilter, setPartnerFilter] = useState<string>('')
-  const [statusFilter, setStatusFilter] = useState<string>('')
-  const [confidenceFilter, setConfidenceFilter] = useState<string>('')
-
-
-  const { data: runs, isLoading, error, refetch } = useReconciliationRuns(1)
-  const createMutation = useCreateReconciliationRun()
-  const { data: uploadsData, isLoading: uploadsLoading } = useUploads(1, 100)
-  const uploads = uploadsData?.uploads || []
-
-  const resultsQueries = useQueries({
-    queries: (runs || []).map((run) => ({
-      queryKey: ['reconciliation-results', run.id],
-      queryFn: () => reconciliationService.getResults(run.id),
-      enabled: !!run.id,
-    })),
-  })
-
-  const allResults = resultsQueries
-    .flatMap((q) => q.data || [])
-    .slice(0, 10)
-
-  const resultsLoading = resultsQueries.some((q) => q.isLoading)
-
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [runName, setRunName] = useState('')
-  const [reconType, setReconType] = useState('')
+  const [stream, setStream] = useState<StreamKey>('settlement')
   const [sourceUploadId, setSourceUploadId] = useState('')
   const [targetUploadId, setTargetUploadId] = useState('')
+  const [runName, setRunName] = useState('')
+  const [openResultRunId, setOpenResultRunId] = useState<string | null>(null)
 
-  const handleCreateRun = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const runsQuery = useReconciliationRuns()
+  const uploadsQuery = useUploads({ page: 1, pageSize: 100 })
+  const createMutation = useCreateReconciliationRun()
+  const executeMutation = useExecuteReconciliationRun()
+  const runs = runsQuery.data ?? []
+  const uploads = uploadsQuery.data?.uploads ?? []
+  const activeStream = STREAMS.find((s) => s.key === stream)!
+
+  const streamQueries = useQueries({
+    queries: (openResultRunId ? [openResultRunId] : []).map((runId) => ({
+      queryKey: ['reconciliation-results', runId],
+      queryFn: () => reconciliationService.getResults(runId),
+      enabled: !!runId,
+    })),
+  })
+  const results = (streamQueries[0]?.data ?? []) as ReconResultResponse[]
+  const resultsLoading = streamQueries[0]?.isLoading ?? false
+  const resultsError = streamQueries[0]?.error
+  const openRun = runs.find((r) => r.id === openResultRunId)
+
+  const sourceOptions = useMemo(
+    () =>
+      uploads.filter(
+        (u) => u.document_type === activeStream.sourceType && USABLE_UPLOAD_STATUSES.includes(u.status)
+      ),
+    [uploads, activeStream]
+  )
+  const targetOptions = useMemo(
+    () =>
+      uploads.filter(
+        (u) => u.document_type === activeStream.targetType && USABLE_UPLOAD_STATUSES.includes(u.status)
+      ),
+    [uploads, activeStream]
+  )
+
+  const resetSelections = () => {
+    setSourceUploadId('')
+    setTargetUploadId('')
+  }
+
+  const canCreate = !!sourceUploadId && !!targetUploadId
+
+  const handleCreateRun = async () => {
+    if (!canCreate) return
     try {
-      await createMutation.mutateAsync({
-        name: runName,
-        recon_type: reconType,
+      const created = await createMutation.mutateAsync({
+        name: runName.trim() || `${activeStream.label} run`,
+        recon_type: activeStream.key,
         source_upload_id: sourceUploadId,
         target_upload_id: targetUploadId,
       })
-      setShowCreateDialog(false)
       setRunName('')
-      setReconType('')
-      setSourceUploadId('')
-      setTargetUploadId('')
-      toast.success('Reconciliation run created')
-    } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Failed to create reconciliation run.'
-      toast.error(msg)
+      toast.success(`Run "${created.name}" created. Execute it to compute results.`)
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
     }
   }
 
-  if (isLoading || resultsLoading || uploadsLoading) {
+  const handleExecute = async (runId: string, alreadyCompleted = false) => {
+    try {
+      const done = await executeMutation.mutateAsync(runId)
+      if (done.status === 'completed') {
+        toast.success(
+          alreadyCompleted
+            ? `Re-run finished — results refreshed (${done.discrepancy_count} discrepancies).`
+            : `Run completed — ${done.matched_count} matched, ${done.discrepancy_count} discrepancies.`
+        )
+      } else {
+        toast.error(`Run failed: check the run's error details.`)
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err))
+    }
+  }
+
+  if (runsQuery.isLoading || uploadsQuery.isLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <h1 className="text-2xl font-bold">Reconciliation Workspace</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Reconciliation</h1>
+          <p className="text-muted-foreground">Runs and results for all reconciliation streams.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[...Array(7)].map((_, i) => (
-            <Card key={i} className="h-32">
-              <CardContent>
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="mt-2 h-8 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     )
   }
 
-  if (error) {
+  if (runsQuery.error) {
     return (
-      <Alert variant="destructive" onRetry={refetch} retryLabel="Retry">
-        <AlertTitle>Failed to load reconciliation data</AlertTitle>
-        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
+      <Alert variant="destructive" onRetry={() => void runsQuery.refetch()} retryLabel="Retry">
+        <AlertTitle>Failed to load reconciliation runs</AlertTitle>
+        <AlertDescription>{extractErrorMessage(runsQuery.error)}</AlertDescription>
       </Alert>
     )
   }
 
-  const totalRecords = runs?.reduce((acc, r) => acc + r.total_source + r.total_target, 0) || 0
-  const matchedRecords = runs?.reduce((acc, r) => acc + r.matched_count, 0) || 0
-  const unmatchedRecords = runs?.reduce((acc, r) => acc + r.unmatched_count, 0) || 0
-  const totalExpected = runs?.reduce((acc, r) => acc + Number(String(r.total_expected || 0)), 0) || 0
-  const totalReceived = runs?.reduce((acc, r) => acc + Number(String(r.total_received || 0)), 0) || 0
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Reconciliation Workspace</h1>
-          <p className="text-muted-foreground">
-            Reconcile orders against settlements, freight, COD remittances, and returns across partners.
-          </p>
-        </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New Reconciliation Run
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold">Reconciliation</h1>
+        <p className="text-muted-foreground">
+          Create a run for a stream, execute it, and review per-order results.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Records</CardTitle>
-            <CardDescription>Source + target transactions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRecords.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Matched Records</CardTitle>
-            <CardDescription>Successfully reconciled</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{matchedRecords.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Unmatched Records</CardTitle>
-            <CardDescription>Requires manual review</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{unmatchedRecords.toLocaleString()}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Difference</CardTitle>
-            <CardDescription>Expected vs received</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${totalExpected >= totalReceived ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrencyINR(totalExpected - totalReceived)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* New run form */}
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>New Run</CardTitle>
+          <CardDescription>
+            Pick a stream and the two uploads to compare. Runs execute on demand — a created
+            (not executed) run produces no results.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label>Partner</Label>
-            <Select value={partnerFilter} onValueChange={(v) => setPartnerFilter(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="All partners" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="amazon">Amazon</Select.Item>
-                <Select.Item value="flipkart">Flipkart</Select.Item>
-                <Select.Item value="myntra">Myntra</Select.Item>
-                <Select.Item value="meesho">Meesho</Select.Item>
-              </Select.Content>
-            </Select>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="run-stream">Stream</Label>
+              <Select value={stream} onValueChange={(v) => { setStream(v as StreamKey); resetSelections() }}>
+                <Select.Trigger className="w-full">
+                  <Select.Value />
+                </Select.Trigger>
+                <Select.Content>
+                  {STREAMS.map((s) => (
+                    <Select.Item key={s.key} value={s.key}>
+                      {s.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-source">{activeStream.sourceLabel} upload</Label>
+              <Select value={sourceUploadId} onValueChange={(v) => setSourceUploadId(v)}>
+                <Select.Trigger className="w-full">
+                  <Select.Value placeholder={sourceOptions.length ? 'Select upload…' : 'No uploads yet'} />
+                </Select.Trigger>
+                <Select.Content>
+                  {sourceOptions.length === 0 ? (
+                    <Select.Item value="" disabled>
+                      Upload a {activeStream.sourceType.replace('_', ' ')} file first
+                    </Select.Item>
+                  ) : (
+                    sourceOptions.map((u) => (
+                      <Select.Item key={u.id} value={u.id}>
+                        {u.original_filename}
+                      </Select.Item>
+                    ))
+                  )}
+                </Select.Content>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-target">{activeStream.targetLabel} upload</Label>
+              <Select value={targetUploadId} onValueChange={(v) => setTargetUploadId(v)}>
+                <Select.Trigger className="w-full">
+                  <Select.Value placeholder={targetOptions.length ? 'Select upload…' : 'No uploads yet'} />
+                </Select.Trigger>
+                <Select.Content>
+                  {targetOptions.length === 0 ? (
+                    <Select.Item value="" disabled>
+                      Upload a {activeStream.targetType.replace('_', ' ')} file first
+                    </Select.Item>
+                  ) : (
+                    targetOptions.map((u) => (
+                      <Select.Item key={u.id} value={u.id}>
+                        {u.original_filename}
+                      </Select.Item>
+                    ))
+                  )}
+                </Select.Content>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-name">Run name (optional)</Label>
+              <Input
+                id="run-name"
+                placeholder={`${activeStream.label} — Nov 2026`}
+                value={runName}
+                onChange={(e) => setRunName(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Date Range</Label>
-            <Select value={dateRange} onValueChange={(v) => setDateRange(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="Select range…" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="7d">Last 7 days</Select.Item>
-                <Select.Item value="30d">Last 30 days</Select.Item>
-                <Select.Item value="90d">Last 90 days</Select.Item>
-                <Select.Item value="1y">Last year</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Reconciliation Status</Label>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="Select status…" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="matched">Matched</Select.Item>
-                <Select.Item value="unmatched">Unmatched</Select.Item>
-                <Select.Item value="partial">Partial</Select.Item>
-              </Select.Content>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Match Confidence</Label>
-            <Select value={confidenceFilter} onValueChange={(v) => setConfidenceFilter(v as string)}>
-              <Select.Trigger className="w-full">
-                <Select.Value placeholder="Select confidence…" />
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="high">High (≥80%)</Select.Item>
-                <Select.Item value="medium">Medium (50–79%)</Select.Item>
-                <Select.Item value="low">Low (&lt;50%)</Select.Item>
-              </Select.Content>
-            </Select>
+          <div className="flex justify-end">
+            <Button
+              onClick={handleCreateRun}
+              disabled={!canCreate || createMutation.isPending}
+              className="flex items-center gap-2"
+            >
+              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create Run
+            </Button>
           </div>
         </CardContent>
       </Card>
 
+      {/* Runs table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle>Match Results</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href="#">Export Results</a>
-            </Button>
-          </div>
+          <CardTitle>Runs</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runsQuery.refetch()}
+            className="flex items-center gap-1.5"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-auto">
+          {runs.length === 0 ? (
+            <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
+              No reconciliation runs yet. Create one above, then click Execute.
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Order Reference</TableHead>
-                  <TableHead className="w-1/6">Partner</TableHead>
-                  <TableHead className="w-1/6 text-right">Order Value</TableHead>
-                  <TableHead className="w-1/6 text-right">Expected</TableHead>
-                  <TableHead className="w-1/6 text-right">Actual</TableHead>
-                  <TableHead className="w-1/6 text-right">Difference</TableHead>
-                  <TableHead className="w-1/6">Match Method</TableHead>
-                  <TableHead className="w-1/6">Confidence</TableHead>
-                  <TableHead className="w-1/6">Status</TableHead>
-                  <TableHead className="w-1/6">Actions</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Stream</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Matched</TableHead>
+                  <TableHead className="text-right">Discrepancies</TableHead>
+                  <TableHead className="text-right">Gap</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allResults.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
-                      No match results available. Run a reconciliation to see results.
+                {runs.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell className="font-medium truncate-title max-w-[220px]" title={run.name}>
+                      {run.name}
+                    </TableCell>
+                    <TableCell>
+                      {streamTypeLabel(run.recon_type)}
+                    </TableCell>
+                    <TableCell>{runStatusBadge(run.status)}</TableCell>
+                    <TableCell className="text-right text-green-700">
+                      {run.status === 'completed' ? run.matched_count.toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-right text-red-700">
+                      {run.status === 'completed' ? run.discrepancy_count.toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {run.status === 'completed' ? formatCurrencyINR(run.total_discrepancy) : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(run.status === 'created' || run.status === 'running') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleExecute(run.id)}
+                            disabled={executeMutation.isPending}
+                          >
+                            {executeMutation.isPending && executeMutation.variables === run.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : (
+                              <Play className="h-4 w-4 mr-1" />
+                            )}
+                            Execute
+                          </Button>
+                        )}
+                        {run.status === 'completed' && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setOpenResultRunId(
+                                openResultRunId === run.id ? null : run.id
+                              )}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              {openResultRunId === run.id ? 'Hide Results' : 'Results'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void handleExecute(run.id, true)}
+                              disabled={executeMutation.isPending}
+                              title="Re-executing replaces this run's previous results"
+                            >
+                              {executeMutation.isPending && executeMutation.variables === run.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4 mr-1" />
+                              )}
+                              Re-run
+                            </Button>
+                          </>
+                        )}
+                        {run.status === 'failed' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleExecute(run.id)}
+                            disabled={executeMutation.isPending}
+                          >
+                            {executeMutation.isPending && executeMutation.variables === run.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4 mr-1" />
+                            )}
+                            Retry
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  allResults.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-medium truncate-title" title={row.order_reference}>
-                        {row.order_reference}
-                      </TableCell>
-                      <TableCell>—</TableCell>
-                      <TableCell className="text-right currency-cell">
-                        {formatCurrencyINR(row.expected_amount || 0)}
-                      </TableCell>
-                      <TableCell className="text-right currency-cell">
-                        {formatCurrencyINR(row.actual_amount || 0)}
-                      </TableCell>
-                      <TableCell className="text-right currency-cell">
-                        {formatCurrencyINR(Number(row.expected_amount || 0) - Number(row.actual_amount || 0))}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{String(row.match_method || '-').replace('_', ' ')}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={
-                            Number(row.confidence_score || 0) >= 0.8
-                              ? 'bg-green-100 text-green-800 border-green-200'
-                              : Number(row.confidence_score || 0) >= 0.5
-                                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                : 'bg-red-100 text-red-800 border-red-200'
-                          }
-                        >
-                          {Math.round(Number(row.confidence_score || 0) * 100)}%
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            row.match_status === 'matched'
-                              ? 'success'
-                              : row.match_status === 'partial'
-                                ? 'warning'
-                                : 'destructive'
-                          }
-                        >
-                          {String(row.match_status).replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="outline" size="sm" asChild>
-                            <a href="#">View</a>
-                          </Button>
-                          <Button variant="outline" size="sm" asChild>
-                            <a href="#">Review</a>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                ))}
               </TableBody>
             </Table>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-sm text-muted-foreground">
-              Showing {allResults.length} records
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled>Previous</Button>
-              <Button variant="outline" size="sm">Next</Button>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {showCreateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateDialog(false)} />
-          <Card className="w-full max-w-md m-4">
-            <CardHeader>
-              <CardTitle>Create Reconciliation Run</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <form onSubmit={handleCreateRun}>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Run Name</Label>
-                    <Input
-                      placeholder="e.g. Dec Orders vs Settlements"
-                      value={runName}
-                      onChange={(e) => setRunName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Reconciliation Type</Label>
-                    <Select value={reconType} onValueChange={(v) => setReconType(v as string)}>
-                      <Select.Trigger className="w-full">
-                        <Select.Value placeholder="Select type…" />
-                      </Select.Trigger>
-                      <Select.Content>
-                        {DOCUMENT_TYPES.map(dt => (
-                          <Select.Item key={dt.value} value={`${dt.value}_settlement`}>
-                            {dt.label} → Settlements
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Source Upload</Label>
-                      <Select value={sourceUploadId} onValueChange={(v) => setSourceUploadId(v as string)}>
-                        <Select.Trigger className="w-full">
-                          <Select.Value placeholder="Select source file…" />
-                        </Select.Trigger>
-                        <Select.Content>
-                          {uploads.map((u) => (
-                            <Select.Item key={u.id} value={u.id}>
-                              {u.original_filename}
-                            </Select.Item>
-                          ))}
-                          {uploads.length === 0 && (
-                            <Select.Item value="" disabled>
-                              No uploads available
-                            </Select.Item>
-                          )}
-                        </Select.Content>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Target Upload</Label>
-                      <Select value={targetUploadId} onValueChange={(v) => setTargetUploadId(v as string)}>
-                        <Select.Trigger className="w-full">
-                          <Select.Value placeholder="Select target file…" />
-                        </Select.Trigger>
-                        <Select.Content>
-                          {uploads.map((u) => (
-                            <Select.Item key={u.id} value={u.id}>
-                              {u.original_filename}
-                            </Select.Item>
-                          ))}
-                          {uploads.length === 0 && (
-                            <Select.Item value="" disabled>
-                              No uploads available
-                            </Select.Item>
-                          )}
-                        </Select.Content>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <CardFooter className="flex gap-2">
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-                  <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? 'Creating…' : 'Create Run'}
-                  </Button>
-                </CardFooter>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Results of the selected run */}
+      {openResultRunId && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle>Results — {openRun?.name ?? 'Run'}</CardTitle>
+              <CardDescription>
+                Per-order engine verdicts. Counts: {results.length} rows.
+              </CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setOpenResultRunId(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {resultsLoading ? (
+              <div className="p-6 space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : resultsError ? (
+              <div className="p-6">
+                <Alert variant="destructive" onRetry={() => void streamQueries[0]?.refetch()}>
+                  <AlertTitle>Failed to load results</AlertTitle>
+                  <AlertDescription>{extractErrorMessage(resultsError)}</AlertDescription>
+                </Alert>
+              </div>
+            ) : results.length === 0 ? (
+              <div className="h-24 flex items-center justify-center text-muted-foreground text-sm">
+                This run has no results. Execute it first.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order Reference</TableHead>
+                    <TableHead>Stream Status</TableHead>
+                    <TableHead>Match</TableHead>
+                    <TableHead className="text-right">Expected</TableHead>
+                    <TableHead className="text-right">Received</TableHead>
+                    <TableHead className="text-right">Difference</TableHead>
+                    <TableHead className="text-right">Confidence</TableHead>
+                    <TableHead className="max-w-[320px]">Explanation</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {results.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium truncate-title max-w-[180px]" title={r.order_reference}>
+                        {r.order_reference}
+                      </TableCell>
+                      <TableCell>{streamStatusBadge(r.stream_status)}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="capitalize">
+                          {r.match_status.replace(/_/g, ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrencyINR(r.expected_amount)}</TableCell>
+                      <TableCell className="text-right">{formatCurrencyINR(r.actual_amount)}</TableCell>
+                      <TableCell className={cn(
+                        'text-right font-medium',
+                        Number(r.difference) === 0 ? 'text-green-700' : 'text-red-700'
+                      )}>
+                        {formatCurrencyINR(r.difference)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {Number(r.confidence_score) >= 0 ? `${(Number(r.confidence_score) * 100).toFixed(0)}%` : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground truncate-title max-w-[320px]" title={r.explanation ?? ''}>
+                        {r.explanation ?? '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       )}
+
+      <Alert variant="info">
+        <AlertTitle>How runs work</AlertTitle>
+        <AlertDescription>
+          Executing a run compares the two uploads and writes real results, discrepancies and draft
+          claims. Re-executing a run is safe: its previous results are replaced (older runs are kept).
+        </AlertDescription>
+      </Alert>
     </div>
   )
 }
