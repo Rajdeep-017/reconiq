@@ -137,7 +137,6 @@ class CODEngine:
 
             gap = received - expected
             status = StreamStatus.SETTLED
-            if gap < -TOLERANCE:
             if gap < -p.tolerance:
                 status = StreamStatus.SHORT_PAID
             elif (

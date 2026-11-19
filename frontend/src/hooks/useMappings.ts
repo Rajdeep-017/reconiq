@@ -36,8 +36,10 @@ export function useSaveMapping() {
     onSuccess: (_, variables) => {
       // Approval triggers normalization + processing server-side, so every
       // downstream dataset can change.
-      invalidateFinancialData(queryClient, ['mappings'])
-      void queryClient.invalidateQueries({ queryKey: ['mappings', 'suggest', variables.upload_id] })
+      return Promise.all([
+        invalidateFinancialData(queryClient, ['mappings']),
+        queryClient.invalidateQueries({ queryKey: ['mappings', 'suggest', variables.upload_id] }),
+      ])
     },
   })
 }

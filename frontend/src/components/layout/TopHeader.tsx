@@ -1,6 +1,6 @@
 'use client'
 
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   User,
   ChevronDown,
@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/useAuth'
 
 const breadcrumbItems: Record<string, { label: string; href: string }[]> = {
   '/': [{ label: 'Dashboard', href: '/' }],
+  '/dashboard': [{ label: 'Dashboard', href: '/' }],
   '/uploads': [{ label: 'Uploads', href: '/uploads' }],
   '/mapping': [{ label: 'Column Mapping', href: '/mapping' }],
   '/reconciliation': [{ label: 'Reconciliation', href: '/reconciliation' }],
@@ -27,14 +28,17 @@ const breadcrumbItems: Record<string, { label: string; href: string }[]> = {
   '/partners': [{ label: 'Partners', href: '/partners' }],
   '/users': [{ label: 'Users', href: '/users' }],
   '/settings': [{ label: 'Settings', href: '/settings' }],
+  '/match-review': [{ label: 'Match Review', href: '/match-review' }],
+  '/audit-logs': [{ label: 'Audit Logs', href: '/audit-logs' }],
 }
 
 export function TopHeader({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const location = useLocation()
   const { user, logout } = useAuth()
-  const crumbs = breadcrumbItems[location.pathname] || [
-    { label: location.pathname.split('/').pop() || 'Dashboard', href: location.pathname },
-  ]
+  const isMappingRoute = /^\/uploads\/[^/]+\/mapping$/.test(location.pathname)
+  const crumbs = breadcrumbItems[location.pathname] || (isMappingRoute
+    ? breadcrumbItems['/mapping']
+    : [{ label: location.pathname.split('/').pop() || 'Dashboard', href: location.pathname }])
 
   return (
     <header
@@ -92,10 +96,10 @@ export function TopHeader({ onMenuClick }: { onMenuClick?: () => void } = {}) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
-              <a href="/settings">Account settings</a>
+              <Link to="/settings">Account settings</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="/users">Team members</a>
+              <Link to="/users">Team members</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive">

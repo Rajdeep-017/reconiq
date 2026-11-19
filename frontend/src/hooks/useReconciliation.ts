@@ -42,9 +42,7 @@ export function useCreateReconciliationRun() {
 
   return useMutation({
     mutationFn: (data: ReconRunCreate) => reconciliationService.createRun(data),
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }
 
@@ -55,9 +53,11 @@ export function useExecuteReconciliationRun() {
     mutationFn: (runId: string) => reconciliationService.executeRun(runId),
     onSuccess: (run) => {
       // Execution writes results, discrepancies and claims.
-      invalidateFinancialData(queryClient)
       queryClient.setQueryData(['reconciliation-run', run.id], run)
-      void queryClient.invalidateQueries({ queryKey: ['reconciliation-results', run.id] })
+      return Promise.all([
+        invalidateFinancialData(queryClient),
+        queryClient.invalidateQueries({ queryKey: ['reconciliation-results', run.id] }),
+      ])
     },
   })
 }

@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useUploadFile, useProcessUpload, useUploads } from '@/hooks/useUploads'
 import { usePartners } from '@/hooks/usePartners'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { truncate, cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -189,7 +190,7 @@ export function UploadReports() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)] gap-6">
         {/* Main column: Upload form */}
         <div className="space-y-6">
-          <Card>
+          <Card id="new-upload">
             <CardHeader>
               <CardTitle>New Upload</CardTitle>
               <CardDescription>
@@ -363,10 +364,26 @@ export function UploadReports() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {uploads.length === 0 ? (
-                <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
-                  No uploads yet — add your first file above.
+              {uploadsQuery.isLoading ? (
+                <div className="flex h-24 items-center justify-center" role="status" aria-label="Loading upload history">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
+              ) : uploadsQuery.error ? (
+                <Alert
+                  variant="destructive"
+                  onRetry={() => void uploadsQuery.refetch()}
+                  retryLabel="Retry"
+                >
+                  <AlertTitle>Failed to load upload history</AlertTitle>
+                  <AlertDescription>{extractErrorMessage(uploadsQuery.error)}</AlertDescription>
+                </Alert>
+              ) : uploads.length === 0 ? (
+                <EmptyDataState
+                  title="No uploads yet"
+                  description="Choose a report type and upload your first file to begin."
+                  actionLabel="Upload a file"
+                  to="#new-upload"
+                />
               ) : (
                 <Table>
                   <TableHeader>
@@ -438,16 +455,6 @@ export function UploadReports() {
             </CardContent>
           </Card>
 
-          {uploadsQuery.error && (
-            <Alert
-              variant="destructive"
-              onRetry={() => void uploadsQuery.refetch()}
-              retryLabel="Retry"
-            >
-              <AlertTitle>Failed to load upload history</AlertTitle>
-              <AlertDescription>{extractErrorMessage(uploadsQuery.error)}</AlertDescription>
-            </Alert>
-          )}
         </div>
 
         {/* Supporting column: Instructions */}

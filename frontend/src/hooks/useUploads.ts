@@ -66,9 +66,7 @@ export function useUploadFile() {
       })
       return res.data
     },
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }
 
@@ -84,8 +82,6 @@ export function useProcessUpload() {
       const res = await api.client.post<UploadResponse>(`/uploads/${uploadId}/process`)
       return res.data
     },
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }

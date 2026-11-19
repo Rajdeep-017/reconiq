@@ -29,8 +29,6 @@ export function useUpdateDiscrepancy() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: DiscrepancyUpdateRequest }) =>
       discrepancyService.update(id, data),
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }

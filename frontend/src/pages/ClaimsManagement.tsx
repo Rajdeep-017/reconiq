@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { formatCurrencyINR } from '@/lib/utils'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { useClaims, useCreateClaim, useUpdateClaim } from '@/hooks/useClaims'
 import { useDiscrepancies } from '@/hooks/useDiscrepancies'
 import { toast } from 'sonner'
@@ -91,7 +92,8 @@ export function ClaimsManagement() {
     page: 1,
     page_size: 100,
   })
-  const { data: discrepancies = [] } = useDiscrepancies({ page: 1, page_size: 100 })
+  const discrepanciesQuery = useDiscrepancies({ page: 1, page_size: 100 })
+  const discrepancies = discrepanciesQuery.data ?? []
   const createMutation = useCreateClaim()
   const updateMutation = useUpdateClaim()
 
@@ -141,7 +143,7 @@ export function ClaimsManagement() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || discrepanciesQuery.isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -159,11 +161,16 @@ export function ClaimsManagement() {
     )
   }
 
-  if (error) {
+  if (error || discrepanciesQuery.error) {
+    const queryError = error ?? discrepanciesQuery.error
     return (
-      <Alert variant="destructive" onRetry={() => void refetch()} retryLabel="Retry">
+      <Alert
+        variant="destructive"
+        onRetry={() => void Promise.all([refetch(), discrepanciesQuery.refetch()])}
+        retryLabel="Retry"
+      >
         <AlertTitle>Failed to load claims</AlertTitle>
-        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(queryError)}</AlertDescription>
       </Alert>
     )
   }
@@ -376,7 +383,16 @@ export function ClaimsManagement() {
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                      No claims found matching your filters.
+                      {claims.length === 0 ? (
+                        <EmptyDataState
+                          title="No claims yet"
+                          description="Upload your reports and run a reconciliation to find claimable discrepancies."
+                          actionLabel="Run reconciliation"
+                          to="/reconciliation"
+                        />
+                      ) : (
+                        'No claims found matching your filters.'
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -400,6 +416,11 @@ export function ClaimsManagement() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
+                          {updateMutation.isPending && updateMutation.variables?.id === c.id && (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground" role="status">
+                              <Loader2 className="h-3 w-3 animate-spin" /> Updating…
+                            </span>
+                          )}
                           {(NEXT_STATUSES[c.status] ?? []).some((n) => n.value === 'submitted') && (
                             <Button
                               variant="outline"

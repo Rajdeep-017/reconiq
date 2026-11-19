@@ -25,8 +25,8 @@ export const FINANCIAL_ROOT_KEYS = FINANCIAL_KEYS
  * pass extra root keys (e.g. 'mappings') to also invalidate their own data.
  */
 export function invalidateFinancialData(queryClient: QueryClient, extraKeys: string[] = []) {
-  const roots = [...FINANCIAL_KEYS, ...extraKeys]
-  for (const key of roots) {
-    void queryClient.invalidateQueries({ queryKey: [key] })
-  }
+  const roots = new Set<string>([...FINANCIAL_KEYS, ...extraKeys])
+  return Promise.all(
+    [...roots].map((key) => queryClient.invalidateQueries({ queryKey: [key] }))
+  )
 }

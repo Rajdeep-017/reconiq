@@ -9,6 +9,7 @@ import {
 } from '@/hooks/useReconciliation'
 import { reconciliationService, type ReconResultResponse } from '@/services/reconciliation'
 import { useUploads } from '@/hooks/useUploads'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { formatCurrencyINR, cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -185,11 +186,16 @@ export function ReconciliationWorkspace() {
     )
   }
 
-  if (runsQuery.error) {
+  if (runsQuery.error || uploadsQuery.error) {
+    const error = runsQuery.error ?? uploadsQuery.error
     return (
-      <Alert variant="destructive" onRetry={() => void runsQuery.refetch()} retryLabel="Retry">
-        <AlertTitle>Failed to load reconciliation runs</AlertTitle>
-        <AlertDescription>{extractErrorMessage(runsQuery.error)}</AlertDescription>
+      <Alert
+        variant="destructive"
+        onRetry={() => void Promise.all([runsQuery.refetch(), uploadsQuery.refetch()])}
+        retryLabel="Retry"
+      >
+        <AlertTitle>Failed to load reconciliation data</AlertTitle>
+        <AlertDescription>{extractErrorMessage(error)}</AlertDescription>
       </Alert>
     )
   }
@@ -204,7 +210,7 @@ export function ReconciliationWorkspace() {
       </div>
 
       {/* New run form */}
-      <Card>
+      <Card id="new-run">
         <CardHeader>
           <CardTitle>New Run</CardTitle>
           <CardDescription>
@@ -309,9 +315,12 @@ export function ReconciliationWorkspace() {
         </CardHeader>
         <CardContent className="p-0">
           {runs.length === 0 ? (
-            <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
-              No reconciliation runs yet. Create one above, then click Execute.
-            </div>
+            <EmptyDataState
+              title="No reconciliation runs yet"
+              description="Upload the files you want to compare, then create and execute a reconciliation run."
+              actionLabel={uploads.length === 0 ? 'Upload a file' : 'Create a run'}
+              to={uploads.length === 0 ? '/uploads' : '#new-run'}
+            />
           ) : (
             <Table>
               <TableHeader>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { useDashboard } from '@/hooks/useDashboard'
 import { useUploads } from '@/hooks/useUploads'
 import { useReconciliationRuns } from '@/hooks/useReconciliation'
@@ -157,26 +158,40 @@ export function Dashboard() {
   }
 
   const metricsQuery = useDashboard()
-  const { data: settlementTrends, isLoading: settlementLoading } = useSettlementTrends({
+  const settlementQuery = useSettlementTrends({
     days: daysForRange(dateRange),
   })
-  const { data: matchingTrends, isLoading: matchingLoading } = useMatchingTrends({
+  const matchingQuery = useMatchingTrends({
     weeks: weeksForRange(dateRange),
   })
-  const { data: partnerPerformance, isLoading: partnerLoading } = usePartnerPerformance()
-  const { data: partnerDiscrepancies, isLoading: discrepanciesLoading } = usePartnerDiscrepancies()
+  const partnerPerformanceQuery = usePartnerPerformance()
+  const partnerDiscrepanciesQuery = usePartnerDiscrepancies()
   const uploadsQuery = useUploads({ page: 1, pageSize: 5 })
   const runsQuery = useReconciliationRuns()
   const discrepanciesQuery = useDiscrepancies({ page: 1, page_size: 5 })
   const claimsQuery = useClaims({ page: 1, page_size: 5 })
 
+  const settlementTrends = settlementQuery.data
+  const matchingTrends = matchingQuery.data
+  const partnerPerformance = partnerPerformanceQuery.data
+  const partnerDiscrepancies = partnerDiscrepanciesQuery.data
   const data = metricsQuery.data
-  const metricsLoading =
-    metricsQuery.isLoading || settlementLoading || matchingLoading || partnerLoading || discrepanciesLoading
+  const queries = [
+    metricsQuery,
+    settlementQuery,
+    matchingQuery,
+    partnerPerformanceQuery,
+    partnerDiscrepanciesQuery,
+    uploadsQuery,
+    runsQuery,
+    discrepanciesQuery,
+    claimsQuery,
+  ]
+  const isLoading = queries.some((query) => query.isLoading)
+  const errorQuery = queries.find((query) => query.error)
+  const retryAll = () => Promise.all(queries.map((query) => query.refetch()))
 
-  const analyticsLoading = metricsLoading
-
-  if (metricsQuery.isLoading || analyticsLoading) {
+  if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[...Array(8)].map((_, i) => (
@@ -191,18 +206,22 @@ export function Dashboard() {
     )
   }
 
-  if (metricsQuery.error) {
+  if (errorQuery?.error) {
     return (
-      <Alert variant="destructive" onRetry={() => void metricsQuery.refetch()} retryLabel="Retry">
+      <Alert variant="destructive" onRetry={() => void retryAll()} retryLabel="Retry">
         <AlertTitle>Failed to load dashboard</AlertTitle>
-        <AlertDescription>{extractErrorMessage(metricsQuery.error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(errorQuery.error)}</AlertDescription>
       </Alert>
     )
   }
 
   if (!data) {
     return (
-      <Alert variant="info">
+      <Alert
+        variant="info"
+        onRetry={() => void retryAll()}
+        retryLabel="Retry"
+      >
         <AlertTitle>No data available</AlertTitle>
         <AlertDescription>
           Dashboard metrics could not be loaded. Please try refreshing the page.
@@ -216,6 +235,25 @@ export function Dashboard() {
   const runs = (runsQuery.data ?? []).slice(0, 5)
   const discrepanciesList = (discrepanciesQuery.data ?? []).slice(0, 5)
   const claims = (claimsQuery.data ?? []).slice(0, 5)
+
+  if ((uploadsQuery.data?.total ?? uploads.length) === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Financial Overview</h1>
+          <p className="text-muted-foreground">
+            Monitor settlements, reconciliation performance and financial discrepancies.
+          </p>
+        </div>
+        <EmptyDataState
+          title="No financial data yet"
+          description="Upload a file to begin, then map its columns and run a reconciliation."
+          actionLabel="Upload a file"
+          to="/uploads"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -245,7 +283,7 @@ export function Dashboard() {
             </Select>
           </div>
           <Button
-            onClick={() => void metricsQuery.refetch()}
+            onClick={() => void retryAll()}
             size="sm"
             className="flex items-center gap-2"
           >
@@ -470,9 +508,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-0">
             {uploads.length === 0 ? (
-              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
-                No uploads yet.
-              </div>
+              <EmptyDataState
+                title="No uploads yet"
+                description="Upload a file to begin tracking reconciliation activity."
+                actionLabel="Upload a file"
+                to="/uploads"
+              />
             ) : (
               <div className="overflow-auto max-h-[240px]">
                 <Table>
@@ -515,9 +556,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-0">
             {runs.length === 0 ? (
-              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
-                No reconciliation runs yet.
-              </div>
+              <EmptyDataState
+                title="No reconciliation runs yet"
+                description="Compare uploaded reports by creating a reconciliation run."
+                actionLabel="Run reconciliation"
+                to="/reconciliation"
+              />
             ) : (
               <div className="overflow-auto max-h-[240px]">
                 <Table>
@@ -564,9 +608,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-0">
             {discrepanciesList.length === 0 ? (
-              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
-                No discrepancies recorded yet.
-              </div>
+              <EmptyDataState
+                title="No discrepancies yet"
+                description="Run a reconciliation to identify potential discrepancies."
+                actionLabel="Run reconciliation"
+                to="/reconciliation"
+              />
             ) : (
               <div className="overflow-auto max-h-[192px]">
                 <Table>
@@ -602,9 +649,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="p-0">
             {claims.length === 0 ? (
-              <div className="h-24 flex items-center justify-center text-sm text-muted-foreground">
-                No claims recorded yet.
-              </div>
+              <EmptyDataState
+                title="No claims yet"
+                description="Run a reconciliation to find claimable discrepancies."
+                actionLabel="Run reconciliation"
+                to="/reconciliation"
+              />
             ) : (
               <div className="overflow-auto max-h-[192px]">
                 <Table>

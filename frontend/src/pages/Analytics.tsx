@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +22,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RefreshCw } from 'lucide-react'
+import { extractErrorMessage } from '@/lib/api'
 
 function EmptyChart({ title }: { title: string }) {
   return (
@@ -47,53 +49,47 @@ export function Analytics() {
   const [dateRange, setDateRange] = useState('30d')
   const days = daysForRange(dateRange)
 
-  const {
-    data: settlementTrends,
-    isLoading: settlementLoading,
-    error: settlementError,
-  } = useSettlementTrends({ days })
-  const {
-    data: partnerPerformance,
-    isLoading: partnerLoading,
-  } = usePartnerPerformance()
-  const {
-    data: partnerDiscrepancies,
-    isLoading: discrepanciesLoading,
-  } = usePartnerDiscrepancies()
-  const {
-    data: freightOvercharge,
-    isLoading: freightLoading,
-  } = useFreightOvercharge()
-  const {
-    data: codRemittance,
-    isLoading: codLoading,
-  } = useCODRemittance({ days })
-  const {
-    data: returnRefund,
-    isLoading: returnsLoading,
-  } = useReturnRefund()
-  const {
-    data: claimRecovery,
-    isLoading: claimsLoading,
-  } = useClaimRecovery({ days })
-  const {
-    data: monthWise,
-    isLoading: monthLoading,
-  } = useMonthWise()
+  const settlementQuery = useSettlementTrends({ days })
+  const partnerPerformanceQuery = usePartnerPerformance()
+  const partnerDiscrepanciesQuery = usePartnerDiscrepancies()
+  const freightOverchargeQuery = useFreightOvercharge()
+  const codRemittanceQuery = useCODRemittance({ days })
+  const returnRefundQuery = useReturnRefund()
+  const claimRecoveryQuery = useClaimRecovery({ days })
+  const monthWiseQuery = useMonthWise()
 
-  const isLoading =
-    settlementLoading ||
-    partnerLoading ||
-    discrepanciesLoading ||
-    freightLoading ||
-    codLoading ||
-    returnsLoading ||
-    claimsLoading ||
-    monthLoading
+  const settlementTrends = settlementQuery.data
+  const partnerPerformance = partnerPerformanceQuery.data
+  const partnerDiscrepancies = partnerDiscrepanciesQuery.data
+  const freightOvercharge = freightOverchargeQuery.data
+  const codRemittance = codRemittanceQuery.data
+  const returnRefund = returnRefundQuery.data
+  const claimRecovery = claimRecoveryQuery.data
+  const monthWise = monthWiseQuery.data
+  const analyticsQueries = [
+    settlementQuery,
+    partnerPerformanceQuery,
+    partnerDiscrepanciesQuery,
+    freightOverchargeQuery,
+    codRemittanceQuery,
+    returnRefundQuery,
+    claimRecoveryQuery,
+    monthWiseQuery,
+  ]
 
-  const error =
-    settlementError ||
-    null
+  const isLoading = analyticsQueries.some((query) => query.isLoading)
+  const errorQuery = analyticsQueries.find((query) => query.error)
+  const hasData = [
+    settlementTrends,
+    partnerPerformance,
+    partnerDiscrepancies,
+    freightOvercharge,
+    codRemittance,
+    returnRefund,
+    claimRecovery,
+    monthWise,
+  ].some((items) => (items?.length ?? 0) > 0)
+  const retryAll = () => Promise.all(analyticsQueries.map((query) => query.refetch()))
 
   if (isLoading) {
     return (
@@ -120,11 +116,15 @@ export function Analytics() {
     )
   }
 
-  if (error) {
+  if (errorQuery?.error) {
     return (
-      <Alert variant="destructive">
+      <Alert
+        variant="destructive"
+        onRetry={() => void retryAll()}
+        retryLabel="Retry"
+      >
         <AlertTitle>Failed to load analytics</AlertTitle>
-        <AlertDescription>{String(error)}</AlertDescription>
+        <AlertDescription>{extractErrorMessage(errorQuery.error)}</AlertDescription>
       </Alert>
     )
   }
@@ -150,7 +150,7 @@ export function Analytics() {
               <Select.Item value="1y">Last year</Select.Item>
             </Select.Content>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="flex items-center gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => void retryAll()} className="flex items-center gap-1.5">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </Button>
         </div>
@@ -159,6 +159,14 @@ export function Analytics() {
         Date range applies to settlement trends, COD remittance and claim recovery charts; partner
         and other aggregates always cover all data.
       </p>
+      {!hasData && (
+        <EmptyDataState
+          title="No analytics data yet"
+          description="Upload your reports and run a reconciliation to populate these charts."
+          actionLabel="Upload a file"
+          to="/uploads"
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 1. Settlement trends */}

@@ -19,9 +19,7 @@ export function useCreateClaim() {
 
   return useMutation({
     mutationFn: (data: ClaimCreateRequest) => claimService.create(data),
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }
 
@@ -31,8 +29,6 @@ export function useUpdateClaim() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ClaimUpdateRequest }) =>
       claimService.update(id, data),
-    onSuccess: () => {
-      invalidateFinancialData(queryClient)
-    },
+    onSuccess: () => invalidateFinancialData(queryClient),
   })
 }

@@ -12,10 +12,11 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { formatCurrencyINR } from '@/lib/utils'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { useDiscrepancies, useUpdateDiscrepancy } from '@/hooks/useDiscrepancies'
 import { toast } from 'sonner'
 import { extractErrorMessage } from '@/lib/api'
-import { Download, RefreshCw } from 'lucide-react'
+import { Download, Loader2, RefreshCw } from 'lucide-react'
 
 /** Full backend DiscrepancyType vocabulary — the first nine are legacy
  * categories; the last seven are the engine-emitted stream types (Phase D). */
@@ -325,7 +326,16 @@ export function Discrepancies() {
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
-                      No discrepancies found matching your filters.
+                      {discrepancies.length === 0 ? (
+                        <EmptyDataState
+                          title="No discrepancies yet"
+                          description="Upload your reports and run a reconciliation to detect discrepancies."
+                          actionLabel="Run reconciliation"
+                          to="/reconciliation"
+                        />
+                      ) : (
+                        'No discrepancies found matching your filters.'
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -356,6 +366,11 @@ export function Discrepancies() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            {updateMutation.isPending && updateMutation.variables?.id === d.id && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground" role="status">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Updating…
+                              </span>
+                            )}
                             {(d.status === 'detected' || d.status === 'disputed') && (
                               <Button
                                 variant="outline"

@@ -3,7 +3,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useSuggestMapping, useGetMapping, useSaveMapping } from '@/hooks/useMappings'
-import { useUpload } from '@/hooks/useUploads'
+import { useUpload, useUploads } from '@/hooks/useUploads'
+import { EmptyDataState } from '@/components/EmptyDataState'
 import { cn } from '@/lib/utils'
 import { extractErrorMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -109,14 +110,93 @@ function inferType(values: string[]): string {
 
 export function MappingReview() {
   const { upload_id } = useParams<{ upload_id: string }>()
+  if (!upload_id) return <MappingUploadList />
+  return <UploadMappingReview uploadId={upload_id} />
+}
+
+function MappingUploadList() {
+  const uploadsQuery = useUploads({ page: 1, pageSize: 100 })
+  const uploads = uploadsQuery.data?.uploads ?? []
+
+  if (uploadsQuery.isLoading) return <Skeleton className="h-64 w-full" />
+  if (uploadsQuery.error) {
+    return (
+      <Alert
+        variant="destructive"
+        onRetry={() => void uploadsQuery.refetch()}
+        retryLabel="Retry"
+      >
+        <AlertTitle>Failed to load uploads</AlertTitle>
+        <AlertDescription>{extractErrorMessage(uploadsQuery.error)}</AlertDescription>
+      </Alert>
+    )
+  }
+  if (uploads.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">Column Mapping</h1>
+          <p className="text-muted-foreground">Review and approve mappings for uploaded reports.</p>
+        </div>
+        <EmptyDataState
+          title="No uploads to map yet"
+          description="Upload a report first, then review its detected columns here."
+          actionLabel="Upload a report"
+          to="/uploads"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Column Mapping</h1>
+        <p className="text-muted-foreground">Choose an uploaded report to review its column mappings.</p>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>File</TableHead>
+                <TableHead>Report type</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Rows</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {uploads.map((upload) => (
+                <TableRow key={upload.id}>
+                  <TableCell className="font-medium">{upload.original_filename}</TableCell>
+                  <TableCell className="capitalize">{upload.document_type.replace(/_/g, ' ')}</TableCell>
+                  <TableCell className="capitalize">{upload.status}</TableCell>
+                  <TableCell>{upload.row_count ?? '—'}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/uploads/${upload.id}/mapping`}>Review mapping</Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function UploadMappingReview({ uploadId }: { uploadId: string }) {
   const navigate = useNavigate()
 
   const [mappings, setMappings] = useState<MappingField[]>([])
   const [initialized, setInitialized] = useState(false)
 
-  const suggestQuery = useSuggestMapping(upload_id || '')
-  const getMappingQuery = useGetMapping(upload_id || '')
-  const uploadQuery = useUpload(upload_id || '')
+  const suggestQuery = useSuggestMapping(uploadId)
+  const getMappingQuery = useGetMapping(uploadId)
+  const uploadQuery = useUpload(uploadId)
 
   const upload = uploadQuery.data
   const documentType = upload?.document_type ?? ''
@@ -128,7 +208,7 @@ export function MappingReview() {
   const isLoading =
     suggestQuery.isLoading || getMappingQuery.isLoading || uploadQuery.isLoading
 
-  const suggestError = suggestQuery.error ?? getMappingQuery.error
+  const queryError = suggestQuery.error ?? getMappingQuery.error ?? uploadQuery.error
 
   // Initialize mapping rows from the suggestion engine (and any saved mapping).
   useEffect(() => {
@@ -221,10 +301,9 @@ export function MappingReview() {
   }
 
   const handleSaveDraft = async () => {
-    if (!upload_id) return
     try {
       await saveMutation.mutateAsync({
-        upload_id,
+        upload_id: uploadId,
         mappings: buildMappingObject(),
         approved: false,
       })
@@ -235,7 +314,6 @@ export function MappingReview() {
   }
 
   const handleApproveAndProcess = async () => {
-    if (!upload_id) return
     if (requiredMissing.length > 0) {
       toast.error(
         `Map the required field(s) first: ${requiredMissing.map((f) => f.label).join(', ')}`
@@ -246,7 +324,7 @@ export function MappingReview() {
       // Approval triggers deterministic normalization + processing server-side
       // before the request returns; the uploads list will reflect the result.
       await saveMutation.mutateAsync({
-        upload_id,
+        upload_id: uploadId,
         mappings: buildMappingObject(),
         approved: true,
       })
@@ -257,15 +335,19 @@ export function MappingReview() {
     }
   }
 
-  if (suggestError) {
+  if (queryError) {
     return (
       <div className="space-y-4">
-        <Alert variant="destructive" onRetry={() => {
-          void suggestQuery.refetch()
-          void getMappingQuery.refetch()
-        }}>
+        <Alert
+          variant="destructive"
+          onRetry={() => void Promise.all([
+            suggestQuery.refetch(),
+            getMappingQuery.refetch(),
+            uploadQuery.refetch(),
+          ])}
+        >
           <AlertTitle>Failed to load mapping data</AlertTitle>
-          <AlertDescription>{extractErrorMessage(suggestError)}</AlertDescription>
+          <AlertDescription>{extractErrorMessage(queryError)}</AlertDescription>
         </Alert>
         <Button variant="outline" asChild>
           <Link to="/uploads">Back to uploads</Link>
@@ -273,7 +355,7 @@ export function MappingReview() {
       </div>
     )
   }
-  if (isLoading || !upload || canonicalFields.length === 0) {
+  if (isLoading) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[600px]">
         <Card className="col-span-2">
@@ -290,6 +372,26 @@ export function MappingReview() {
           </CardContent>
         </Card>
       </div>
+    )
+  }
+  if (!upload) {
+    return (
+      <EmptyDataState
+        title="Upload not found"
+        description="Choose a file from upload history to review its column mapping."
+        actionLabel="Go to uploads"
+        to="/uploads"
+      />
+    )
+  }
+  if (canonicalFields.length === 0) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Unsupported document type</AlertTitle>
+        <AlertDescription>
+          Column mapping is not configured for this upload type.
+        </AlertDescription>
+      </Alert>
     )
   }
 

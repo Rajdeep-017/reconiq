@@ -23,7 +23,6 @@ export function MainLayout() {
   // On mobile the sidebar is a hidden overlay drawer by default.
   useEffect(() => {
     if (isMobile) {
-      setCollapsed(true)
       setMobileOpen(false)
     }
   }, [isMobile])
@@ -60,13 +59,13 @@ export function MainLayout() {
         onToggleCollapse={toggle}
         isMobile={isMobile}
       />
-      <div className="main-area flex flex-col min-w-0 min-h-0">
+      <div className="main-area col-start-2 flex flex-col min-w-0 min-h-0">
         <TopHeader onMenuClick={toggle} />
         <main className="main-content flex-1 overflow-y-auto min-w-0 p-6 sm:p-6 md:p-8">
           <Outlet />
         </main>
+        <Toaster />
       </div>
-      <Toaster />
     </div>
   )
 }
