@@ -26,10 +26,21 @@ cd reconiq
 ```bash
 # Copy the example environment file
 cp .env.example backend/.env
-
-# Edit the .env file if needed
-# For local development, the defaults should work out of the box
 ```
+
+Set the database host to match where Alembic/backend runs:
+
+| Where the process runs | `DATABASE_URL` host |
+|---|---|
+| Windows/macOS/Linux host, against published Docker port | `127.0.0.1:5432` |
+| Inside Docker Compose network | `postgres:5432` |
+| Managed PostgreSQL | your provider hostname |
+
+`localhost`/`127.0.0.1` inside a container points to the container itself and
+causes `connection timeout expired`. Alembic now logs a warning when it detects
+this. It also retries with `DATABASE_CONNECT_TIMEOUT`,
+`MIGRATION_CONNECT_ATTEMPTS`, and `MIGRATION_RETRY_DELAY_SECONDS` so a slow-starting
+database does not fail the deploy.
 
 ### 1.4 Start Infrastructure
 
@@ -240,6 +251,42 @@ alembic revision -m "add custom index"
 3. **Never edit a migration** that has been applied to production. Create a new migration instead.
 4. **Include both upgrade and downgrade** functions in every migration.
 5. **Use batch operations** for large table alterations to avoid locking issues.
+
+### 4.4 Pre-deployment migration verification
+
+Run these checks before every deployment:
+
+```bash
+cd backend
+
+# 1. Confirm there is exactly one migration head
+alembic heads
+
+# 2. Confirm models and migrations agree
+alembic check
+
+# 3. Verify offline SQL generation (also catches URL-escaping issues)
+alembic upgrade head --sql > /tmp/reconiq-schema.sql
+
+# 4. Run the migration regression suite (creates and drops isolated databases)
+pytest tests/test_migrations.py -q
+
+# 5. Apply migrations to the target database
+alembic upgrade head
+```
+
+If step 5 reports `connection timeout expired`:
+
+1. Confirm the database is running: `docker compose ps`.
+2. Confirm the host in `DATABASE_URL` is correct for where Alembic runs
+   (`127.0.0.1` on the host, `postgres` inside Compose).
+3. Increase startup tolerance if needed:
+   `MIGRATION_CONNECT_ATTEMPTS=20 MIGRATION_RETRY_DELAY_SECONDS=5 alembic upgrade head`.
+
+`e01org_tenant_isolation` backfills existing rows into tenant organizations. Users
+get one organization each; rows without a resolvable parent are grouped into a
+single `legacy-import` organization. Fresh databases do not get this synthetic
+tenant. The migration also supports `alembic upgrade head --sql` for DBA review.
 
 ---
 

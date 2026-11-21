@@ -393,6 +393,29 @@ class TestCrossOrgDiscrepancies:
 class TestCrossOrgClaims:
     """GET /api/v1/claims (list filters by org) and PATCH /api/v1/claims/{id} — cross-org must be 403."""
 
+    def test_user_a_can_create_claim_for_own_discrepancy(
+        self, client: TestClient, auth_headers_a: dict, discrepancy_a: Discrepancy
+    ):
+        response = client.post(
+            "/api/v1/claims",
+            headers=auth_headers_a,
+            json={
+                "discrepancy_id": str(discrepancy_a.id),
+                "claim_type": "short_payment",
+                "notes": "Created from the claims dashboard",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["discrepancy_id"] == str(discrepancy_a.id)
+        assert data["claim_type"] == "short_payment"
+        assert data["status"] == "draft"
+        assert Decimal(data["claim_amount"]) == Decimal("20.00")
+
+        listed = client.get("/api/v1/claims", headers=auth_headers_a)
+        assert listed.status_code == 200
+        assert any(c["id"] == data["id"] for c in listed.json())
+
     def test_user_a_can_access_own_claim_in_list(
         self, client: TestClient, auth_headers_a: dict, claim_a: Claim, claim_b: Claim
     ):

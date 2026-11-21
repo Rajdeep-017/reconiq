@@ -26,6 +26,9 @@ const MAX_FILE_SIZE_MB = 50
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 const ACCEPTED_TYPES = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
 
+// Radix Select forbids value=""; use a sentinel for the "no partner" option.
+const NO_PARTNER = '__no_partner__'
+
 const DOCUMENT_TYPES = [
   { value: 'orders', label: 'Orders' },
   { value: 'settlements', label: 'Settlements' },
@@ -204,15 +207,15 @@ export function UploadReports() {
                 <div className="space-y-2">
                   <Label htmlFor="partner">Partner (optional)</Label>
                   <Select
-                    value={partnerId}
-                    onValueChange={(val) => setPartnerId(val)}
+                    value={partnerId || NO_PARTNER}
+                    onValueChange={(val) => setPartnerId(val === NO_PARTNER ? '' : val)}
                     disabled={isUploading}
                   >
                     <Select.Trigger className="w-full">
                       <Select.Value placeholder={partners.length ? 'No partner selected' : 'No partners yet'} />
                     </Select.Trigger>
                     <Select.Content>
-                      <Select.Item value="" className="text-muted-foreground">
+                      <Select.Item value={NO_PARTNER} className="text-muted-foreground">
                         No partner
                       </Select.Item>
                       {partners.map((p) => (

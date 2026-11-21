@@ -43,6 +43,9 @@ const STREAMS: {
 /** Uploads that can drive an engine: mapping approved and data normalized (or still moving). */
 const USABLE_UPLOAD_STATUSES = ['mapped', 'processing', 'processed']
 
+// Radix Select forbids value=""; use a sentinel for the empty-state row.
+const NO_UPLOAD_OPTION = '__no_upload__'
+
 const runStatusBadge = (s: string) => {
   switch (s) {
     case 'completed':
@@ -243,7 +246,7 @@ export function ReconciliationWorkspace() {
                 </Select.Trigger>
                 <Select.Content>
                   {sourceOptions.length === 0 ? (
-                    <Select.Item value="" disabled>
+                    <Select.Item value={NO_UPLOAD_OPTION} disabled>
                       Upload a {activeStream.sourceType.replace('_', ' ')} file first
                     </Select.Item>
                   ) : (
@@ -264,7 +267,7 @@ export function ReconciliationWorkspace() {
                 </Select.Trigger>
                 <Select.Content>
                   {targetOptions.length === 0 ? (
-                    <Select.Item value="" disabled>
+                    <Select.Item value={NO_UPLOAD_OPTION} disabled>
                       Upload a {activeStream.targetType.replace('_', ' ')} file first
                     </Select.Item>
                   ) : (

@@ -51,12 +51,19 @@ const NEXT_STATUSES: Record<string, { value: string; label: string; cofounderOnl
 const CLAIM_TYPE_OPTIONS = [
   { value: 'short_payment', label: 'Short Payment' },
   { value: 'missing_settlement', label: 'Missing Settlement' },
+  { value: 'unpaid_order', label: 'Unpaid Order' },
   { value: 'freight_overcharge', label: 'Freight Overcharge' },
   { value: 'duplicate_awb_billing', label: 'Duplicate AWB Billing' },
   { value: 'missing_cod_remittance', label: 'COD Remittance' },
   { value: 'return_not_received', label: 'Return Not Received' },
   { value: 'return_refund', label: 'Return/Refund' },
+  { value: 'delay', label: 'Late Settlement / Payment' },
+  { value: 'other', label: 'Other' },
 ]
+
+// Radix Select forbids an item with value="". Use a sentinel for the
+// "nothing available" row and keep the real state as an empty string.
+const NO_DISCREPANCY = '__no_discrepancy__'
 
 const claimTypeDefault = (discType: string | undefined): string => {
   switch (discType) {
@@ -65,18 +72,27 @@ const claimTypeDefault = (discType: string | undefined): string => {
       return 'short_payment'
     case 'missing_settlement':
       return 'missing_settlement'
+    case 'unpaid_past_due':
+    case 'unpaid_order':
+      return 'unpaid_order'
     case 'missing_freight_invoice':
     case 'freight_overcharged':
     case 'freight_overcharge':
+    case 'incorrect_freight_weight':
+    case 'incorrect_freight_zone':
     case 'duplicate_awb_billing':
       return 'freight_overcharge'
     case 'missing_cod_remittance':
       return 'missing_cod_remittance'
     case 'return_not_received':
-    case 'return_refund_mismatch':
       return 'return_not_received'
+    case 'return_refund_mismatch':
+      return 'return_refund'
+    case 'settled_late':
+    case 'delay':
+      return 'delay'
     default:
-      return ''
+      return 'other'
   }
 }
 
@@ -115,6 +131,7 @@ export function ClaimsManagement() {
 
   const handleCreateClaim = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!discrepancyId || !claimType) return
     try {
       const created = await createMutation.mutateAsync({
         discrepancy_id: discrepancyId,
@@ -476,9 +493,11 @@ export function ClaimsManagement() {
       {showCreateDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateDialog(false)} />
-          <Card className="w-full max-w-md m-4">
+          {/* relative z-10 keeps the card above the fixed backdrop, which
+              otherwise paints over static content and hides the dialog. */}
+          <Card className="relative z-10 w-full max-w-md m-4" role="dialog" aria-modal="true" aria-labelledby="create-claim-title">
             <CardHeader>
-              <CardTitle>Create Claim</CardTitle>
+              <CardTitle id="create-claim-title">Create Claim</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <form onSubmit={handleCreateClaim}>
@@ -494,7 +513,7 @@ export function ClaimsManagement() {
                       </Select.Trigger>
                       <Select.Content>
                         {discrepancyOptions.length === 0 ? (
-                          <Select.Item value="" disabled>
+                          <Select.Item value={NO_DISCREPANCY} disabled>
                             Execute a reconciliation run first
                           </Select.Item>
                         ) : (
@@ -517,9 +536,6 @@ export function ClaimsManagement() {
                         <Select.Value placeholder="Select claim type…" />
                       </Select.Trigger>
                       <Select.Content>
-                        <Select.Item value="" disabled className="text-muted-foreground">
-                          Select claim type…
-                        </Select.Item>
                         {CLAIM_TYPE_OPTIONS.map((t) => (
                           <Select.Item key={t.value} value={t.value}>
                             {t.label}
@@ -539,7 +555,7 @@ export function ClaimsManagement() {
                   </div>
                 </div>
                 <CardFooter className="flex gap-2">
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
                   <Button type="submit" disabled={createMutation.isPending || !discrepancyId || !claimType}>
                     {createMutation.isPending ? 'Creating…' : 'Create Claim'}
                   </Button>

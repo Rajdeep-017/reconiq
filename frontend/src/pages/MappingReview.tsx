@@ -17,6 +17,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CheckCircle2, Loader2, AlertCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
+// Radix Select forbids value=""; use a sentinel for the "unmapped" option.
+const UNMAPPED = '__unmapped__'
+
 /** Canonical target vocabulary per document type — mirrors the backend
  * mapping aliases + normalization service. `required: true` fields must be
  * mapped before processing (backend requires `order_reference` for every type). */
@@ -611,14 +614,14 @@ function UploadMappingReview({ uploadId }: { uploadId: string }) {
                         {m.status === 'approved' ? 'Approved ✓' : 'Approve'}
                       </Button>
                       <Select
-                        value={m.mapped_target ?? ''}
-                        onValueChange={(val) => updateTarget(m.source_column, val || null)}
+                        value={m.mapped_target ?? UNMAPPED}
+                        onValueChange={(val) => updateTarget(m.source_column, val === UNMAPPED ? null : val)}
                       >
                         <Select.Trigger className="w-[230px] h-8 text-xs">
                           <Select.Value placeholder="Unmapped — select target…" />
                         </Select.Trigger>
                         <Select.Content>
-                          <Select.Item value="" className="text-muted-foreground">
+                          <Select.Item value={UNMAPPED} className="text-muted-foreground">
                             Unmapped
                           </Select.Item>
                           {canonicalFields.map((f) => (
