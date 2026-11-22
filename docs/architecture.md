@@ -1,321 +1,391 @@
-# ReconIQ — System Architecture
+# ReconIQ - System Architecture
 
-## 1. System Overview
+## 1. System overview
 
-ReconIQ is a financial reconciliation platform purpose-built for Indian e-commerce sellers and D2C brands. It automates the tedious process of reconciling orders, settlements, freight charges, COD remittances, and returns across multiple marketplace partners (Amazon, Flipkart, Myntra, Meesho, etc.).
+ReconIQ is a financial reconciliation platform for Indian e-commerce sellers and D2C brands. It reconciles orders, marketplace settlements, payment-gateway payouts, COD remittances, freight invoices, returns, and warehouse scans.
 
-The platform follows a modular, layered architecture designed for correctness of financial calculations, extensibility across partners, and developer productivity.
+The repository contains two frontends in one React application:
 
-### Core Principles
+- a public landing page at `/`
+- an authenticated reconciliation workspace starting at `/dashboard`
 
-- **Financial Accuracy First**: All monetary values use `Decimal`/`NUMERIC` — never floating-point.
-- **Deterministic Reconciliation**: Business rules are explicit, versioned, and auditable.
-- **AI as Advisor, Not Decider**: AI assists with column mapping and anomaly hints but never modifies financial data.
-- **Multi-Tenant by Design**: Every data record is scoped to an organization.
+The public page reads an explicitly labelled demonstration dataset from the backend. It never reads tenant records and never hardcodes live business statistics in the frontend.
+
+### Core principles
+
+- **Financial accuracy first** - money uses Python `Decimal` and PostgreSQL `NUMERIC(15, 2)`, never floating point.
+- **Deterministic reconciliation** - business rules, tolerances, and approvals are explicit and auditable.
+- **AI as advisor** - AI may suggest mappings or anomaly hints, but it never writes financial records, calculates money, or approves matches.
+- **Multi-tenant by design** - every tenant-owned record carries `org_id`, and API queries are organization-scoped.
+- **Public data is separate** - the public endpoint returns only aggregate demo values and has no database dependency.
 
 ---
 
-## 2. Technology Stack
+## 2. Runtime topology
+
+```text
+Browser
+  |
+  |  HTTPS
+  v
+Nginx / load balancer
+  |-- /, /login, /register, /dashboard ... --> React SPA (Vite build)
+  |
+  |-- /api/ --------------------------------> FastAPI (Uvicorn)
+                                                |
+                              +-----------------+-----------------+
+                              |                                   |
+                        PostgreSQL 16                         Redis 7
+                        tenant data                     cache / queues
+```
+
+In local development, Vite serves the SPA on port 5173 and proxies `/api` to Uvicorn on port 8000. In the production container stack, Nginx serves the SPA and proxies `/api/` to the backend service.
+
+### Route ownership
+
+| Route | Owner | Auth |
+|---|---|---|
+| `/` | Public landing page | No |
+| `/login`, `/register` | Authentication pages | No |
+| `/dashboard` | Dashboard | Bearer JWT |
+| `/uploads`, `/mapping`, `/reconciliation`, `/match-review` | Reconciliation workspace | Bearer JWT |
+| `/discrepancies`, `/claims`, `/analytics` | Finance workflows | Bearer JWT |
+| `/partners`, `/users`, `/settings`, `/audit-logs` | Administration | Bearer JWT |
+| `/api/v1/public/overview` | FastAPI public router | No |
+| `/api/v1/auth/*` | FastAPI auth router | No |
+| Other `/api/v1/*` | FastAPI protected routers | Bearer JWT |
+
+Unknown client-side paths redirect to `/`.
+
+---
+
+## 3. Technology stack
 
 | Layer | Technology |
 |---|---|
-| **Backend Framework** | FastAPI (Python 3.12) |
-| **ORM** | SQLAlchemy 2.0 (mapped_column, Mapped types) |
-| **Database** | PostgreSQL 16 |
-| **Migrations** | Alembic |
-| **Caching / Queues** | Redis 7 |
-| **Auth** | Argon2 (password hashing) + python-jose (JWT) |
-| **Validation** | Pydantic v2 |
-| **Frontend** | React 18 + TypeScript + Vite |
-| **UI Components** | shadcn/ui + Tailwind CSS |
-| **State Management** | TanStack Query |
-| **AI (Optional)** | Ollama (local LLM) |
-| **Containerization** | Docker + Docker Compose |
+| Backend framework | FastAPI, Python 3.12+ |
+| ORM | SQLAlchemy 2.0 |
+| Validation | Pydantic v2 |
+| Database | PostgreSQL 16 |
+| Migrations | Alembic |
+| Cache / queues | Redis 7, Celery |
+| Auth | Argon2 password hashing, JWT (`python-jose`) |
+| Frontend | React 18, TypeScript, Vite |
+| Styling | Tailwind CSS, scoped landing CSS |
+| Charts | Recharts |
+| Data fetching | TanStack Query, Axios |
+| Optional AI | Ollama, local LLM |
+| Production serving | Nginx |
+| Containerization | Docker, Docker Compose |
 
 ---
 
-## 3. Module Descriptions
+## 4. Backend layout
 
-### 3.1 Auth Module (`app/modules/auth/`)
-- User registration and login
-- JWT access token issuance and validation
-- Password hashing with Argon2
-- Role-based access control (Owner, Admin, Member, Viewer)
-- Organization-scoped permissions
+```text
+backend/app/
+├── api/v1/                 # HTTP routers
+│   ├── auth.py
+│   ├── users.py
+│   ├── partners.py
+│   ├── uploads.py
+│   ├── mappings.py
+│   ├── reconciliation.py
+│   ├── discrepancies.py
+│   ├── claims.py
+│   ├── dashboard.py
+│   ├── analytics.py
+│   └── public.py           # Unauthenticated landing demo data
+├── core/                   # Security, dependencies, exceptions
+├── database/               # Engine, session, Base
+├── models/                 # SQLAlchemy models
+├── modules/
+│   ├── ingestion/          # File parsing and import rows
+│   ├── mapping/            # Column mapping and optional AI suggestions
+│   ├── normalization/      # Canonical record builders
+│   ├── matching/           # Settlement, COD, freight, returns engines
+│   ├── reconciliation/     # Run orchestration
+│   ├── discrepancies/      # Detection and review
+│   ├── claims/             # Claim lifecycle
+│   ├── analytics/          # Aggregates
+│   └── ai/                 # Optional advisory helpers
+├── repositories/           # Data-access helpers
+├── schemas/                # Pydantic request/response models
+├── services/               # Application services
+├── workers/                # Background tasks
+├── config.py               # Pydantic settings
+└── main.py                 # Application factory
+```
 
-### 3.2 File Upload Module (`app/modules/uploads/`)
-- CSV/Excel file upload with size validation
-- File type detection and storage
-- Async parsing and preview generation
-- Column metadata extraction
-- Upload history and status tracking
+### Router groups
 
-### 3.3 Column Mapping Module (`app/modules/mappings/`)
-- Map uploaded file columns to canonical schema fields
-- AI-suggested mappings (via Ollama) with confidence scores
-- User confirmation/override of mappings
-- Mapping template save/reuse per partner
-- Validation of required field coverage
-
-### 3.4 Normalization Module (`app/modules/normalization/`)
-- Transform raw uploaded data into canonical `NormalizedTransaction` records
-- Data type coercion (dates, amounts, quantities)
-- Currency validation (INR)
-- Deduplication detection
-- Data quality scoring
-
-### 3.5 Reconciliation Engine (`app/modules/reconciliation/`)
-- Core matching engine: order ↔ settlement, order ↔ freight, order ↔ COD
-- Multi-pass matching (exact → fuzzy → manual)
-- Configurable match rules and tolerance thresholds
-- Reconciliation run management (create, execute, review)
-- Match result persistence with audit trail
-
-### 3.6 Discrepancy Module (`app/modules/discrepancies/`)
-- Automatic discrepancy detection from reconciliation results
-- Discrepancy categorization (short payment, overcharge, missing settlement, etc.)
-- Severity classification
-- Resolution workflow (auto-resolve, manual review, escalate)
-- Discrepancy analytics and trends
-
-### 3.7 Claims Module (`app/modules/claims/`)
-- Generate claims from confirmed discrepancies
-- Claim lifecycle management (Draft → Submitted → Acknowledged → Resolved → Closed)
-- Claim document generation
-- Partner-wise claim tracking
-- Recovery amount tracking
-
-### 3.8 AI Module (`app/modules/ai/`)
-- Column mapping suggestions
-- Anomaly detection hints
-- Natural language query interface (future)
-- All AI outputs are advisory — never auto-applied to financial data
+| Prefix | Responsibility |
+|---|---|
+| `/api/v1/auth` | Registration, login, current user |
+| `/api/v1/users` | User administration |
+| `/api/v1/partners` | Marketplace and logistics partners |
+| `/api/v1/uploads` | CSV/XLSX ingestion |
+| `/api/v1/mappings` | Column mapping review and approval |
+| `/api/v1/reconciliation` | Runs, results, and match review |
+| `/api/v1/discrepancies` | Discrepancy review and resolution |
+| `/api/v1/claims` | Claim creation and lifecycle |
+| `/api/v1/dashboard` | Dashboard aggregates |
+| `/api/v1/analytics` | Analytics queries |
+| `/api/v1/public` | Public landing demo dataset |
 
 ---
 
-## 4. Data Flow
+## 5. Frontend layout
 
-### 4.1 End-to-End Pipeline
-
-```
-Upload → Parse → Map Columns → Normalize → Match → Reconcile → Detect Discrepancies → Generate Claims
-```
-
-### 4.2 Detailed Flow
-
-```
-┌─────────────┐    ┌──────────────┐    ┌───────────────┐    ┌──────────────┐
-│  File Upload │───▶│  Column Map  │───▶│  Normalize    │───▶│  Match       │
-│  (CSV/XLSX)  │    │  (AI-assist) │    │  (Canonical)  │    │  (Rules)     │
-└─────────────┘    └──────────────┘    └───────────────┘    └──────┬───────┘
-                                                                   │
-                                          ┌────────────────────────┘
-                                          ▼
-                                    ┌──────────────┐    ┌──────────────┐
-                                    │  Discrepancy │───▶│  Claims      │
-                                    │  Detection   │    │  Management  │
-                                    └──────────────┘    └──────────────┘
+```text
+frontend/src/
+├── components/
+│   ├── landing/            # Public nav, hero, panels, sections, FAQ, footer
+│   ├── layout/             # Authenticated shell, sidebar, header
+│   └── ui/                 # Shared primitives
+├── hooks/                  # Auth and data hooks
+├── lib/                    # API client, query client, utilities
+├── pages/                  # Landing, auth, dashboard, workspace
+├── services/               # Typed API services
+├── types/                  # Shared TypeScript types
+├── landing.css             # Scoped public landing design system
+├── routes.tsx              # Public and authenticated routes
+└── main.tsx                # Providers and error boundary
 ```
 
-### 4.3 Upload Flow
-1. User uploads CSV/Excel file via the UI
-2. Backend validates file size, type, and structure
-3. File is stored in `storage/uploads/` with a UUID filename
-4. Parser extracts column headers and a data preview (first 10 rows)
-5. Upload record is persisted with metadata
+### Public landing composition
 
-### 4.4 Column Mapping Flow
-1. System presents extracted columns alongside the canonical schema
-2. AI module suggests mappings based on column names and sample data
-3. User reviews, adjusts, and confirms mappings
-4. Confirmed mappings are saved as a reusable template for the partner
+1. Floating glass navigation with active-section tracking and mobile menu.
+2. Hero with product copy, CTAs, particles, light beams, and a curved arc.
+3. Three live React preview panels: reconciliation overview, settlement reconciliation, discrepancy overview.
+4. Platform capabilities and the reconciliation problem.
+5. Five-step "How ReconIQ works" workflow.
+6. Tabbed product showcase: Overview, Reconciliation, Discrepancies, Claims.
+7. Solutions, FAQ accordion, final CTA, and footer.
+8. Loading, error, retry, and reduced-motion states.
 
-### 4.5 Normalization Flow
-1. Using confirmed mappings, raw rows are transformed into `NormalizedTransaction` records
-2. Data types are coerced: dates parsed, amounts converted to `Decimal`
-3. Deduplication checks run against existing records
-4. Quality score is computed per record
-
-### 4.6 Reconciliation Flow
-1. User creates a reconciliation run, selecting datasets to compare (e.g., Orders vs. Settlements)
-2. Engine executes multi-pass matching:
-   - **Pass 1**: Exact match on order reference
-   - **Pass 2**: Fuzzy match on amount + date proximity
-   - **Pass 3**: Remaining items flagged for manual review
-3. Match results are persisted with confidence scores
-4. Discrepancies are auto-detected from mismatches
+The preview panels use `usePublicOverview` and the shared API client. They never contain fallback business totals. If the public endpoint fails, the UI shows an unavailable state with a retry action.
 
 ---
 
-## 5. Financial Calculation Principles
+## 6. Reconciliation pipeline
 
-ReconIQ follows the **E-R-D** framework for financial reconciliation:
-
-### E — Expected Amount
-The amount the seller expects to receive, calculated from order data:
-```
-Expected = Net Amount (from order) - Commission - Applicable Fees
+```text
+Upload -> Parse -> Map columns -> Approve mapping -> Normalize
+       -> Match -> Detect discrepancies -> Review -> Claim -> Recover
 ```
 
-### R — Received Amount
-The amount actually received, sourced from settlement/remittance data:
-```
-Received = Net Settlement Amount (from partner payout)
+### 6.1 Ingestion
+
+- CSV and XLSX files are validated and stored with a UUID filename.
+- The upload record stores checksum, row count, headers, sample rows, and status.
+- Status lifecycle: `uploaded -> parsed -> mapped -> processing -> processed | failed`.
+
+### 6.2 Mapping
+
+- Rule-based header matching proposes canonical fields.
+- Optional AI suggestions add confidence scores and reasoning.
+- A human approves the mapping before normalization.
+- Approved mappings can be reused as partner templates.
+
+### 6.3 Normalization
+
+- Raw rows become typed canonical records: orders, settlements, COD remittances, freight records, returns, and warehouse scans.
+- Dates are parsed, amounts become `Decimal`, and duplicate hashes are computed.
+- Processing, rejected, and duplicate counts are stored on the upload.
+
+### 6.4 Matching
+
+Reconciliation runs are typed as `settlement`, `freight`, `cod`, or `return`. Match methods include:
+
+- `exact`
+- `composite`
+- `fuzzy`
+- `ai_assisted`
+- `manual`
+
+Match statuses include `matched`, `partial`, `unmatched`, `review_pending`, `confirmed`, and `rejected`.
+
+### 6.5 Discrepancies
+
+Detected discrepancies are categorized, assigned a severity, and reviewed. Categories include short payment, missing settlement, unpaid order, missing COD remittance, freight overcharge, incorrect freight weight/zone, return/refund mismatch, duplicate deduction, excess payment, and other.
+
+### 6.6 Claims
+
+A confirmed discrepancy can become a claim. The lifecycle is:
+
+```text
+draft -> submitted -> acknowledged -> under_review -> resolved | rejected -> closed
 ```
 
-### D — Discrepancy
-The difference between expected and received:
-```
-Discrepancy = Expected - Received
-```
-
-- **D > 0**: Short payment (seller is owed money) → generates a claim
-- **D < 0**: Overpayment (rare, needs verification)
-- **D = 0**: Reconciled (matched)
-
-### Tolerance Thresholds
-- Configurable per reconciliation type
-- Default: ±₹1.00 for rounding tolerance
-- Amounts within tolerance are auto-reconciled
-
-### Data Types
-- All amounts stored as `NUMERIC(15, 2)` in PostgreSQL
-- All calculations use Python `Decimal` with `ROUND_HALF_UP`
-- No floating-point arithmetic is ever used for money
+Claim evidence is stored as an immutable snapshot attached to the claim.
 
 ---
 
-## 6. AI Boundaries
+## 7. Financial calculation principles
 
-### What AI Does
-- Suggests column mappings based on header names and sample data
-- Provides confidence scores for mapping suggestions
-- Detects anomalous patterns in financial data (advisory)
-- Assists with natural language queries (future)
+ReconIQ follows an expected / received / difference model.
 
-### What AI Does NOT Do
-- Modify, create, or delete any financial records
-- Auto-apply mappings without user confirmation
-- Make reconciliation decisions
-- Calculate or adjust monetary amounts
-- Override business rules
+```text
+Expected = order net amount adjusted by commissions and applicable fees
+Received = actual settlement, remittance, or refund amount
+Difference = Expected - Received
+```
 
-### AI Infrastructure
-- Runs locally via Ollama (no data leaves the server)
-- Model: Llama 3.2 (configurable)
-- Graceful degradation: all features work without AI
+Interpretation:
+
+- `Difference > 0` - short payment; the seller may be owed money.
+- `Difference < 0` - excess payment; review required.
+- `Difference = 0` - reconciled within tolerance.
+
+Rules:
+
+- Monetary columns use `NUMERIC(15, 2)`.
+- Python calculations use `Decimal` with explicit rounding.
+- Tolerance is configurable per organization and reconciliation type.
+- Rule parameters are stored in `rule_configs` and are versioned by the audit trail.
+- No financial calculation depends on an LLM.
 
 ---
 
-## 7. Security Model
+## 8. AI boundaries
+
+### AI may
+
+- suggest column mappings
+- provide confidence scores and reasoning
+- surface anomaly hints for human review
+
+### AI may not
+
+- create, modify, or delete financial records
+- auto-approve mappings or matches
+- calculate or adjust monetary amounts
+- override reconciliation rules
+- submit claims
+
+AI is optional. All reconciliation and claim workflows work without Ollama.
+
+---
+
+## 9. Security model
 
 ### Authentication
-- Argon2id password hashing (memory-hard, GPU-resistant)
-- JWT access tokens (HS256, configurable expiry)
-- Refresh token rotation (future)
 
-### Authorization
-- Role-Based Access Control (RBAC)
-- Roles: Owner > Admin > Member > Viewer
-- Organization-scoped data isolation
-- Row-level security via `org_id` filtering on all queries
+- Argon2 password hashing.
+- JWT access tokens with configurable expiry.
+- Tokens are sent as `Authorization: Bearer <token>`.
 
-### API Security
-- CORS with explicit origin whitelist
-- Rate limiting via Redis (future)
-- File upload size limits
-- Input validation via Pydantic models
-- SQL injection prevention via SQLAlchemy parameterized queries
+### Authorization and tenancy
 
-### Data Security
-- Passwords never stored in plaintext
-- Sensitive config via environment variables
-- File uploads stored outside web root
-- No PII in logs
+- Role-based access control.
+- Every tenant-owned query is scoped by `org_id`.
+- Users belong to an organization; organization ownership is explicit.
+- Cross-tenant access is rejected at the service and repository layers.
+
+### API and data protection
+
+- CORS uses an explicit origin allowlist.
+- Upload size and type limits are enforced.
+- Pydantic validates all request bodies.
+- SQLAlchemy parameterizes queries.
+- Uploaded files are stored outside the web root.
+- The public landing endpoint uses no database session and exposes only aggregate demo data.
+- Rate limiting and WAF rules are recommended at the edge.
 
 ---
 
-## 8. Database Overview
+## 10. Database overview
 
-### Engine
-PostgreSQL 16 with the following key characteristics:
-- NUMERIC types for all monetary columns
-- UUID primary keys (generated server-side)
-- Timestamp columns (`created_at`, `updated_at`) on all tables
-- Soft deletes where applicable
-- GIN indexes for JSONB columns (column mappings, metadata)
-- B-tree indexes on foreign keys and frequently queried columns
+PostgreSQL 16 is the system of record. Key characteristics:
 
-### Key Tables
-| Table | Purpose |
+- UUID primary keys.
+- `org_id` on tenant-owned tables.
+- `created_at` and `updated_at` timestamps.
+- `NUMERIC(15, 2)` for money.
+- JSONB for mappings, raw rows, summaries, and metadata.
+- B-tree indexes on foreign keys and common lookup columns.
+- GIN indexes where JSONB containment queries are used.
+
+Major table groups:
+
+| Group | Tables |
 |---|---|
-| `users` | User accounts and credentials |
-| `organizations` | Multi-tenant organization records |
-| `uploaded_files` | File upload metadata and status |
-| `column_mappings` | Mapping configurations per file/partner |
-| `normalized_transactions` | Canonical transaction records |
-| `reconciliation_runs` | Reconciliation execution metadata |
-| `match_results` | Individual match outcomes |
-| `discrepancies` | Detected financial discrepancies |
-| `claims` | Claims generated from discrepancies |
+| Identity and tenancy | `organizations`, `users`, `partners` |
+| Ingestion | `uploads`, `import_rows`, `column_mappings`, `column_mapping_templates` |
+| Canonical records | `orders`, `settlements`, `cod_remittances`, `freight_records`, `returns`, `warehouse_scans` |
+| Reconciliation | `reconciliation_runs`, `reconciliation_results`, `match_suggestions`, `rule_configs` |
+| Recovery | `discrepancies`, `claims`, `claim_evidence` |
+| Operations | `rate_cards`, `audit_logs` |
 
-### Migrations
-- Managed via Alembic
-- Auto-generation from SQLAlchemy models
-- Version-controlled migration scripts
+See [database_design.md](database_design.md) for the full schema reference.
 
 ---
 
-## 9. API Overview
+## 11. API overview
 
-### Base URL
-```
+Base URL:
+
+```text
 http://localhost:8000/api/v1
 ```
 
-### Interactive Docs
+Interactive documentation:
+
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-### Endpoint Groups
-| Prefix | Description |
-|---|---|
-| `/api/v1/auth` | Registration, login, token refresh |
-| `/api/v1/users` | User profile management |
-| `/api/v1/uploads` | File upload and management |
-| `/api/v1/mappings` | Column mapping CRUD |
-| `/api/v1/reconciliation` | Reconciliation runs and results |
-| `/api/v1/discrepancies` | Discrepancy review and resolution |
-| `/api/v1/claims` | Claim lifecycle management |
-| `/api/v1/ai` | AI-assisted features |
+### Public endpoint
 
-### Response Format
-All responses follow a consistent envelope:
-```json
-{
-  "status": "success",
-  "data": { ... },
-  "message": "Optional human-readable message"
-}
-```
+`GET /api/v1/public/overview` returns:
 
-### Error Format
-```json
-{
-  "status": "error",
-  "detail": "Description of what went wrong",
-  "code": "ERROR_CODE"
-}
-```
+- `mode: "demo"`
+- an explicit disclaimer
+- overview counts and matching rate
+- seven-day trend
+- matching breakdown
+- settlement preview
+- discrepancy preview
+- claim lifecycle preview
 
-### Pagination
-List endpoints support cursor-based pagination:
-```
-GET /api/v1/uploads?limit=20&offset=0
-```
+It does not return tenant IDs, organization IDs, user records, settlements, tokens, or emails.
 
-### Authentication
-All endpoints (except `/auth/register` and `/auth/login`) require:
-```
-Authorization: Bearer <access_token>
-```
+### Protected endpoints
+
+Protected endpoints require a bearer token. Dashboard and analytics endpoints return organization-scoped aggregates; workflow endpoints return tenant-owned records.
+
+### Errors
+
+FastAPI returns standard error responses. Validation errors use `422`; authentication failures use `401`; authorization failures use `403`; missing resources use `404`.
+
+---
+
+## 12. Deployment architecture
+
+The production-like stack is defined in `docker-compose.prod.yml`:
+
+- `postgres` - PostgreSQL 16 with a named data volume.
+- `redis` - Redis 7 with append-only persistence.
+- `backend` - Python 3.12 image, Alembic migrations, Uvicorn workers.
+- `frontend` - Vite build served by Nginx, with `/api` proxied to the backend.
+
+Nginx provides:
+
+- SPA fallback for client-side routes.
+- One-year caching for hashed assets.
+- `client_max_body_size` sized for uploads.
+- Security headers.
+- A `/healthz` endpoint for container health checks.
+
+PostgreSQL, Redis, and the direct backend port are bound to `127.0.0.1` for local administration. Only the frontend port is intended for external access. See [deployment.md](../deployment.md) for the full production guide.
+
+---
+
+## 13. Testing and observability
+
+- Backend tests use pytest and a separate `reconiq_test` database.
+- Public endpoint tests verify arithmetic consistency and the absence of tenant fields.
+- Frontend verification uses TypeScript, the production build, and headless browser checks for responsive layout, interactions, error states, and reduced motion.
+- Health endpoints: `/health` for liveness and `/ready` for database and migration readiness.
+- Container logs use Docker's `json-file` driver with rotation.
+- Recommended production additions: Sentry, structured JSON logs, metrics, uptime checks, and database slow-query monitoring.

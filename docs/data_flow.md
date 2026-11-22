@@ -1,271 +1,396 @@
-# ReconIQ — Data Flow Documentation
+# ReconIQ - Data Flow Documentation
 
 ## 1. Overview
 
-This document details the data flows through the ReconIQ platform, from file upload through reconciliation to claims generation.
+This document describes how data moves through ReconIQ:
+
+1. Public landing-page demo data
+2. Authentication
+3. File upload and parsing
+4. Column mapping and approval
+5. Normalization into canonical financial records
+6. Reconciliation and matching
+7. Discrepancy detection
+8. Claims and recovery
+
+All tenant-owned flows are scoped by `org_id`. Monetary calculations use `Decimal` and PostgreSQL `NUMERIC`.
 
 ---
 
-## 2. File Upload Flow
+## 2. Public landing data flow
+
+The public landing page is intentionally isolated from tenant data.
 
 ```mermaid
-flowchart TD
-    A["User selects file\n(CSV/XLSX)"] --> B["Frontend validates\nfile type & size"]
-    B --> C["Upload to\nPOST /api/v1/uploads"]
-    C --> D{"Backend\nvalidation"}
-    D -->|Invalid| E["Return 422\nerror response"]
-    D -->|Valid| F["Store file in\nstorage/uploads/\nwith UUID name"]
-    F --> G["Create uploaded_files\nrecord (status: uploaded)"]
-    G --> H["Parse file\nasynchronously"]
-    H --> I["Extract column\nheaders"]
-    I --> J["Extract sample data\n(first 10 rows)"]
-    J --> K["Count total rows"]
-    K --> L["Update record\n(status: parsed)"]
-    L --> M["Return file metadata\nto frontend"]
+sequenceDiagram
+    participant B as Browser
+    participant N as Nginx
+    participant A as FastAPI /api/v1/public
+    participant R as React Landing
 
-    style A fill:#e1f5fe
-    style M fill:#c8e6c9
-    style E fill:#ffcdd2
+    B->>N: GET /
+    N-->>B: index.html + assets
+    R->>N: GET /api/v1/public/overview
+    N->>A: Proxy request
+    A-->>N: Demo overview JSON
+    N-->>R: mode=demo + disclaimer + aggregates
+    R-->>B: Render preview panels
 ```
 
-### Flow Details
+### Contract
 
-| Step | Component | Description |
-|---|---|---|
-| 1 | Frontend | User selects a file and chooses document type (orders, settlements, etc.) and partner |
-| 2 | Frontend | Client-side validation: file extension (.csv, .xlsx), max size (50MB default) |
-| 3 | API | Multipart form upload with metadata (document_type, partner) |
-| 4 | Service | Server-side validation: MIME type check, size re-validation, malware scan (future) |
-| 5 | Storage | File saved with UUID filename to prevent collisions and path traversal |
-| 6 | Database | Upload record created with `status: uploaded` |
-| 7 | Parser | CSV/Excel parser reads the file, handles encoding detection |
-| 8-10 | Parser | Extract headers, sample rows, and row count |
-| 11 | Database | Record updated to `status: parsed` with extracted metadata |
-| 12 | API | Return parsed file info including headers and preview |
+`GET /api/v1/public/overview` returns:
+
+- `mode: "demo"`
+- `disclaimer`: explicitly states the values are not live customer data
+- `generated_at`
+- `overview`: total, matched, pending, matching rate, status
+- `trend`: seven daily points
+- `matching_breakdown`
+- `settlement`: expected, actual, difference, status
+- `discrepancies`: open, under review, resolved, categories
+- `claims`: lifecycle counts and recovered amount
+
+### Guarantees
+
+- No authentication is required.
+- No database session is used.
+- No tenant, organization, user, email, settlement, or token fields are returned.
+- Arithmetic is internally consistent; tests enforce it.
+- The frontend never falls back to hardcoded business totals.
+- If the endpoint fails, the landing page shows an unavailable state with a retry action.
 
 ---
 
-## 3. Column Mapping Flow
+## 3. Authentication flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as React
+    participant A as FastAPI /auth
+    participant D as PostgreSQL
+
+    U->>F: Email + password
+    F->>A: POST /api/v1/auth/login
+    A->>D: Lookup user by email
+    D-->>A: User + Argon2 hash
+    A->>A: Verify password, sign JWT
+    A-->>F: access_token, token_type, expires_in
+    F->>A: GET /api/v1/auth/me (Bearer)
+    A-->>F: User profile
+    F-->>U: Redirect to /dashboard
+```
+
+- Tokens are stored in browser local storage under `reconiq_token`.
+- The shared Axios client attaches `Authorization: Bearer <token>`.
+- A `401` response clears stored credentials and redirects to `/login`.
+- The authenticated layout redirects unauthenticated users to `/login`.
+- Login and registration redirect authenticated users to `/dashboard`.
+
+---
+
+## 4. File upload flow
 
 ```mermaid
 flowchart TD
-    A["File parsed\nsuccessfully"] --> B["Load canonical schema\nfor document type"]
-    B --> C{"AI module\navailable?"}
-    C -->|Yes| D["Send headers +\nsample data to\nOllama"]
-    C -->|No| E["Use rule-based\nheader matching"]
-    D --> F["AI returns suggested\nmappings with\nconfidence scores"]
+    A["User selects CSV/XLSX"] --> B["Frontend validates extension and size"]
+    B --> C["POST /api/v1/uploads"]
+    C --> D{"Backend validation"}
+    D -->|Invalid| E["422 / 413 error"]
+    D -->|Valid| F["Store file with UUID filename"]
+    F --> G["Create uploads row (status=uploaded)"]
+    G --> H["Parse headers, sample rows, row count"]
+    H --> I["Create import_rows"]
+    I --> J["Update status=parsed"]
+    J --> K["Return upload metadata and preview"]
+```
+
+### Details
+
+| Step | Component | Behaviour |
+|---|---|---|
+| 1 | Frontend | Accepts `.csv` and `.xlsx`, checks `MAX_UPLOAD_SIZE_MB` |
+| 2 | API | Re-validates type and size |
+| 3 | Storage | Saves under `UPLOAD_DIR` with a UUID filename |
+| 4 | Database | Creates an `uploads` row with checksum and metadata |
+| 5 | Parser | Extracts headers, sample rows, and row count |
+| 6 | Database | Creates `import_rows` for raw row storage |
+| 7 | Database | Sets `status=parsed` |
+
+Upload status lifecycle:
+
+```text
+uploaded -> parsed -> mapped -> processing -> processed
+                                             \-> failed
+```
+
+---
+
+## 5. Column mapping flow
+
+```mermaid
+flowchart TD
+    A["Parsed upload"] --> B["Load canonical schema for document type"]
+    B --> C{"AI suggestions enabled?"}
+    C -->|Yes| D["Ollama suggests mappings + confidence"]
+    C -->|No| E["Rule-based header matching"]
+    D --> F["Present suggestions to user"]
     E --> F
-    F --> G["Present mappings\nto user in UI"]
-    G --> H{"User reviews\nmappings"}
-    H -->|Adjust| I["User modifies\nmappings"]
-    I --> H
-    H -->|Confirm| J["Save column_mapping\nrecord"]
-    J --> K{"Save as\ntemplate?"}
-    K -->|Yes| L["Create/update\nmapping template\nfor partner"]
-    K -->|No| M["Update file status\nto 'mapped'"]
+    F --> G{"User reviews"}
+    G -->|Adjust| H["Edit mapping"]
+    H --> G
+    G -->|Approve| I["POST /api/v1/mappings/{id}/approve"]
+    I --> J["Save column_mappings (is_approved=true)"]
+    J --> K{"Save as template?"}
+    K -->|Yes| L["Upsert column_mapping_templates"]
+    K -->|No| M["Continue"]
     L --> M
-    M --> N["Ready for\nnormalization"]
-
-    style A fill:#e1f5fe
-    style N fill:#c8e6c9
+    M --> N["Upload status=mapped"]
 ```
 
-### Canonical Schema Fields
+### Rules
 
-| Document Type | Required Fields | Optional Fields |
+- AI suggestions are advisory and optional.
+- A human must approve the mapping before normalization.
+- The approved mapping is stored with version, approver, and timestamp.
+- Templates are organization- and partner-scoped.
+
+### Canonical fields
+
+| Document type | Required fields | Optional fields |
 |---|---|---|
-| **Orders** | order_reference, order_date, net_amount, status | sku, product_name, quantity, discount, payment_method |
-| **Settlements** | order_reference, settlement_date, net_settlement | commission, shipping_fee, tcs, tds |
-| **Freight** | order_reference, awb_number, total_freight | weight, charged_weight, zone, courier_partner |
-| **COD Remittances** | order_reference, cod_amount, remitted_amount, status | utr_number, remittance_date |
-| **Returns** | order_reference, return_date, return_status | refund_amount, refund_status, return_reason |
+| Orders | `order_reference`, `net_amount` | date, SKU, product, quantity, discount, payment method, customer location, status |
+| Settlements | `order_reference`, `actual_received` | settlement date, commission, shipping fee, other fees, TCS, TDS |
+| COD remittances | `order_reference`, `cod_amount`, `remitted_amount` | remittance date, UTR, status |
+| Freight invoices | `order_reference`, `total_freight` | AWB, invoice date, zone, actual/charged weight, rate, COD charges |
+| Returns | `order_reference`, `refund_amount` | return date, reason, return status, refund status/date |
+| Warehouse scans | `order_reference`, `scan_date` | scan reference, AWB, scan type, status, location |
 
 ---
 
-## 4. Normalization Flow
+## 6. Normalization flow
 
 ```mermaid
 flowchart TD
-    A["Column mapping\nconfirmed"] --> B["Load file data\nwith mappings"]
-    B --> C["For each row:\nApply column mapping"]
-    C --> D["Coerce data types"]
-    D --> E["Parse dates to\nISO format"]
-    E --> F["Convert amounts\nto Decimal"]
-    F --> G["Compute dedup_hash\n(SHA-256 of key fields)"]
-    G --> H{"Duplicate\ndetected?"}
-    H -->|Yes| I["Flag as duplicate\nskip or merge"]
-    H -->|No| J["Compute quality\nscore (0.0-1.0)"]
+    A["Approved mapping"] --> B["Load import_rows"]
+    B --> C["Apply mapping to each row"]
+    C --> D["Coerce dates and Decimal amounts"]
+    D --> E["Validate required fields"]
+    E --> F{"Duplicate hash exists?"}
+    F -->|Yes| G["Increment duplicate_count, skip"]
+    F -->|No| H["Insert canonical record"]
+    H --> I["Link upload_id, partner_id, import_row_id"]
+    I --> J{"More rows?"}
+    G --> J
+    J -->|Yes| C
+    J -->|No| K["Update processed/rejected/duplicate counts"]
+    K --> L["Upload status=processed or failed"]
+```
+
+Canonical tables:
+
+- `orders`
+- `settlements`
+- `cod_remittances`
+- `freight_records`
+- `returns`
+- `warehouse_scans`
+
+Normalization records:
+
+- `processed_count` - successfully inserted rows
+- `rejected_count` - validation failures
+- `duplicate_count` - rows skipped by duplicate hash
+- `error_message` - fatal parsing/normalization detail
+
+Deduplication uses a SHA-256 hash over key fields. The hash is stored on `orders.dedup_hash` and used to prevent duplicate imports.
+
+---
+
+## 7. Reconciliation flow
+
+```mermaid
+flowchart TD
+    A["User creates reconciliation run"] --> B["Select recon type and uploads"]
+    B --> C["Snapshot rule_configs into run.config"]
+    C --> D["Set run status=running"]
+    D --> E["Execute matching engine"]
+
+    E --> F["Settlement matching"]
+    E --> G["COD matching"]
+    E --> H["Freight matching"]
+    E --> I["Return matching"]
+
+    F --> J["Write reconciliation_results"]
+    G --> J
+    H --> J
     I --> J
-    J --> K["Insert into\nnormalized_transactions"]
-    K --> L{"More rows?"}
-    L -->|Yes| C
-    L -->|No| M["Update file status\nto 'normalized'"]
-    M --> N["Return normalization\nsummary"]
 
-    style A fill:#e1f5fe
-    style N fill:#c8e6c9
+    J --> K["Detect discrepancies"]
+    K --> L["Write discrepancies"]
+    L --> M["Compute summary and totals"]
+    M --> N["Set run status=completed"]
+    N --> O["Dashboard and workspace update"]
 ```
 
-### Quality Score Calculation
-The quality score reflects data completeness:
-```
-score = (filled_required_fields / total_required_fields) * 0.7
-      + (filled_optional_fields / total_optional_fields) * 0.3
-```
+### Run types
 
-### Deduplication Hash
-```python
-dedup_hash = sha256(f"{order_reference}|{document_type}|{partner}|{transaction_date}|{net_amount}")
-```
+- `settlement` - orders vs marketplace settlements
+- `cod` - orders vs COD remittances
+- `freight` - orders vs freight invoices and rate cards
+- `return` - returns vs warehouse scans and refunds
+
+### Match methods
+
+| Method | Meaning |
+|---|---|
+| `exact` | Exact order/reference match |
+| `composite` | Match on multiple fields |
+| `fuzzy` | Similar reference/amount/date |
+| `ai_assisted` | AI suggested candidate, human still reviews |
+| `manual` | Human-created or human-confirmed match |
+
+### Match statuses
+
+- `matched`
+- `partial`
+- `unmatched`
+- `review_pending`
+- `confirmed`
+- `rejected`
+
+### Rule configuration
+
+`rule_configs` stores organization-scoped or global defaults for:
+
+- amount tolerance
+- settlement due days
+- COD due days
+- late grace days
+- return scan window
+- RTO expected multiplier
+- severity thresholds
+
+The active values are copied into `reconciliation_runs.config` so historical runs remain explainable even after defaults change.
 
 ---
 
-## 5. Reconciliation Flow
+## 8. Discrepancy flow
 
 ```mermaid
 flowchart TD
-    A["User creates\nreconciliation run"] --> B["Select source dataset\n(e.g., Orders)"]
-    B --> C["Select target dataset\n(e.g., Settlements)"]
-    C --> D["Configure match rules\nand tolerance"]
-    D --> E["Execute reconciliation\n(status: running)"]
-
-    E --> F["PASS 1:\nExact Match"]
-    F --> G["Match on\norder_reference\n(exact string)"]
-    G --> H["Compare amounts\nwithin tolerance"]
-    H --> I["Record matches\n(confidence: 1.0)"]
-
-    I --> J["PASS 2:\nFuzzy Match"]
-    J --> K["Match unmatched on\namount + date\nproximity"]
-    K --> L["Record matches\n(confidence: 0.5-0.9)"]
-
-    L --> M["PASS 3:\nFlag Unmatched"]
-    M --> N["Source-only items\n= Missing settlements"]
-    M --> O["Target-only items\n= Extra settlements"]
-
-    I --> P["Detect discrepancies\nfrom matched pairs"]
-    L --> P
-    N --> P
-    O --> P
-
-    P --> Q["Categorize\ndiscrepancies"]
-    Q --> R["Compute summary\nstatistics"]
-    R --> S["Update run status\nto 'completed'"]
-    S --> T["Return reconciliation\nresults"]
-
-    style A fill:#e1f5fe
-    style T fill:#c8e6c9
+    A["Reconciliation result"] --> B{"Difference or stream issue?"}
+    B -->|No| C["No discrepancy"]
+    B -->|Yes| D["Create discrepancy"]
+    D --> E["Assign type, severity, expected/actual/difference"]
+    E --> F["Status=detected"]
+    F --> G{"Reviewer decision"}
+    G -->|Confirm| H["Status=verified"]
+    G -->|Dispute| I["Status=disputed"]
+    G -->|Dismiss| J["Status=dismissed"]
+    H --> K{"Resolve directly or create claim?"}
+    K -->|Resolve| L["Status=resolved"]
+    K -->|Claim| M["Create claim from discrepancy"]
 ```
 
-### Match Types
+### Severity
 
-| Match Type | Confidence | Criteria |
-|---|---|---|
-| `exact` | 1.0 | Order reference matches exactly, amounts within tolerance |
-| `fuzzy_high` | 0.8–0.9 | Order reference similar, amounts match, dates within 3 days |
-| `fuzzy_low` | 0.5–0.7 | Amounts match, partner matches, dates within 7 days |
-| `manual` | N/A | Flagged for human review |
+- `low`
+- `medium`
+- `high`
+- `critical`
 
-### Discrepancy Detection Rules
+Thresholds are configurable through `rule_configs`.
 
-```mermaid
-flowchart LR
-    A["Matched Pair"] --> B{"Amount\ndifference?"}
-    B -->|"> tolerance"| C["short_payment or\nexcess_payment"]
-    B -->|"<= tolerance"| D["Reconciled ✓"]
+### Discrepancy categories
 
-    E["Source Only\n(no match)"] --> F["missing_settlement\nor missing_remittance"]
-
-    G["Target Only\n(no match)"] --> H["extra_settlement\nor duplicate_charge"]
-
-    I["Freight Match"] --> J{"Charged weight\n> actual?"}
-    J -->|Yes| K["weight_discrepancy"]
-    J -->|No| D
-
-    style D fill:#c8e6c9
-    style C fill:#ffcdd2
-    style F fill:#ffcdd2
-    style H fill:#ffcdd2
-    style K fill:#ffcdd2
-```
+Short payment, missing settlement, unpaid order, missing COD remittance, freight overcharge, incorrect freight weight, incorrect freight zone, return/refund mismatch, duplicate deduction, excess payment, and stream-specific categories such as `short_paid`, `unpaid_past_due`, `freight_overcharged`, `return_not_received`, and `settled_late`.
 
 ---
 
-## 6. Claims Flow
-
-```mermaid
-flowchart TD
-    A["Discrepancy\nconfirmed"] --> B["User reviews\ndiscrepancy details"]
-    B --> C{"Generate\nclaim?"}
-    C -->|No| D["Mark discrepancy\nas resolved/ignored"]
-    C -->|Yes| E["Create claim\n(status: draft)"]
-    E --> F["Auto-populate claim\ndetails from\ndiscrepancy"]
-    F --> G["User reviews and\nedits claim"]
-    G --> H["Submit claim\n(status: submitted)"]
-    H --> I["Record submission\ndate"]
-    I --> J["Partner acknowledges\n(status: acknowledged)"]
-    J --> K["Partner reviews\n(status: under_review)"]
-    K --> L{"Partner\ndecision"}
-    L -->|Accepted| M["Record recovery\namount"]
-    L -->|Rejected| N["Mark as rejected\nwith reason"]
-    L -->|Partial| O["Record partial\nrecovery"]
-    M --> P["Close claim\n(status: closed)"]
-    N --> P
-    O --> P
-    P --> Q["Update discrepancy\nresolution status"]
-
-    style A fill:#e1f5fe
-    style P fill:#c8e6c9
-    style D fill:#fff9c4
-```
-
-### Claim Lifecycle States
+## 9. Claims flow
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft : Create from discrepancy
-    Draft --> Submitted : User submits
-    Submitted --> Acknowledged : Partner confirms receipt
-    Acknowledged --> UnderReview : Partner starts review
-    UnderReview --> Resolved : Partner agrees
-    UnderReview --> Rejected : Partner rejects
-    Resolved --> Closed : Recovery confirmed
-    Rejected --> Closed : Written off or re-filed
-    Draft --> Closed : Cancelled by user
+    [*] --> Draft: Create from verified discrepancy
+    Draft --> Submitted: Submit to partner
+    Submitted --> Acknowledged: Partner acknowledges
+    Acknowledged --> UnderReview: Partner reviews
+    UnderReview --> Resolved: Accepted / partially accepted
+    UnderReview --> Rejected: Rejected
+    Resolved --> Closed: Recovery confirmed
+    Rejected --> Closed: Written off or re-filed
+    Draft --> Closed: Cancelled
 ```
+
+### Claim records
+
+- `claims` stores reference, type, amount, recovered amount, status, notes, and lifecycle timestamps.
+- `claim_evidence` stores an immutable snapshot of the discrepancy and supporting data.
+- Recovery amounts are recorded as `Decimal`/`NUMERIC`.
+- Claim actions are written to `audit_logs`.
 
 ---
 
-## 7. Complete End-to-End Flow
+## 10. End-to-end flow
 
 ```mermaid
 flowchart LR
-    subgraph Upload["1. Upload"]
-        A["CSV/XLSX\nFile"] --> B["Parse &\nStore"]
+    subgraph Ingest["1. Ingest"]
+        A["CSV/XLSX"] --> B["Parse"]
     end
 
     subgraph Map["2. Map"]
-        B --> C["AI Suggest\nMappings"]
-        C --> D["User\nConfirms"]
+        B --> C["Suggest mappings"]
+        C --> D["Human approves"]
     end
 
     subgraph Normalize["3. Normalize"]
-        D --> E["Transform\nto Canonical"]
-        E --> F["Dedup &\nQuality Check"]
+        D --> E["Canonical records"]
+        E --> F["Deduplicate and count"]
     end
 
     subgraph Reconcile["4. Reconcile"]
-        F --> G["Multi-pass\nMatching"]
-        G --> H["Detect\nDiscrepancies"]
+        F --> G["Run matching"]
+        G --> H["Detect discrepancies"]
     end
 
     subgraph Recover["5. Recover"]
-        H --> I["Generate\nClaims"]
-        I --> J["Track\nRecovery"]
+        H --> I["Create claims"]
+        I --> J["Track recovery"]
     end
 
-    style Upload fill:#e3f2fd
+    style Ingest fill:#e3f2fd
     style Map fill:#f3e5f5
     style Normalize fill:#e8f5e9
     style Reconcile fill:#fff3e0
     style Recover fill:#fce4ec
 ```
+
+---
+
+## 11. Failure and retry behaviour
+
+| Failure | Behaviour |
+|---|---|
+| Invalid file type/size | API returns `413` or `422`; no upload row |
+| Parse failure | Upload status `failed`, error message stored |
+| Mapping not approved | Normalization cannot start |
+| Row validation failure | Row rejected; `rejected_count` increments |
+| Duplicate row | Skipped; `duplicate_count` increments |
+| Matching failure | Run status `failed`; error captured |
+| Public endpoint unavailable | Landing shows unavailable state and retry button |
+| Expired/invalid JWT | API returns `401`; frontend clears credentials and redirects to `/login` |
+| Database unavailable | `/ready` reports not ready; containers remain unhealthy |
+
+---
+
+## 12. Data boundaries
+
+- Public landing data is aggregate demo data only.
+- Tenant-owned endpoints require a bearer token and filter by `org_id`.
+- AI outputs are advisory and never mutate financial records.
+- Uploaded files are stored outside the web root.
+- Audit logs record sensitive workflow actions.
+- Claim evidence is append-oriented and retained for dispute history.
