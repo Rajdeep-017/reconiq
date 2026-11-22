@@ -17,8 +17,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 
 const breadcrumbItems: Record<string, { label: string; href: string }[]> = {
-  '/': [{ label: 'Dashboard', href: '/' }],
-  '/dashboard': [{ label: 'Dashboard', href: '/' }],
+  '/dashboard': [{ label: 'Dashboard', href: '/dashboard' }],
   '/uploads': [{ label: 'Uploads', href: '/uploads' }],
   '/mapping': [{ label: 'Column Mapping', href: '/mapping' }],
   '/reconciliation': [{ label: 'Reconciliation', href: '/reconciliation' }],

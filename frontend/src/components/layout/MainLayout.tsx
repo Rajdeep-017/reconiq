@@ -1,17 +1,24 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopHeader } from '@/components/layout/TopHeader'
 import { Toaster } from '@/components/ui/toaster'
 import { useAuth } from '@/hooks/useAuth'
 
 export function MainLayout() {
-  const { loading } = useAuth()
+  const { loading, user } = useAuth()
+  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login', { replace: true })
+    }
+  }, [loading, user, navigate])
 
   useEffect(() => {
     const update = () => setIsMobile(window.innerWidth < 768)
@@ -32,7 +39,7 @@ export function MainLayout() {
     else setCollapsed((prev) => !prev)
   }, [isMobile])
 
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex h-8 w-8 items-center justify-center rounded-full border-4 border-border border-t-primary animate-spin" />

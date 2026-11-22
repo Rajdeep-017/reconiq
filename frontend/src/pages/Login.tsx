@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,7 +23,13 @@ const loginSchema = z.object({
 export function Login() {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { login, loading } = useAuth()
+  const { login, loading, isAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -34,7 +40,7 @@ export function Login() {
     setError(null)
     try {
       await login(values)
-      navigate('/')
+      navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
       const msg = (err as any)?.response?.data?.detail || 'Login failed. Please try again.'
       setError(msg)

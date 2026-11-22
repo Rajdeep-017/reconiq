@@ -1,5 +1,6 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { MainLayout } from '@/components/layout/MainLayout'
+import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
 import { Dashboard } from '@/pages/Dashboard'
@@ -17,6 +18,10 @@ import { AuditLogs } from '@/pages/AuditLogs'
 
 export const router = createBrowserRouter([
   {
+    path: '/',
+    element: <Landing />,
+  },
+  {
     path: '/login',
     element: <Login />,
   },
@@ -25,23 +30,27 @@ export const router = createBrowserRouter([
     element: <Register />,
   },
   {
-    path: '/',
+    // Pathless layout so the authenticated application keeps its existing
+    // absolute URLs while the public landing page owns "/".
     element: <MainLayout />,
     children: [
-      { index: true, element: <Dashboard /> },
-      { path: 'dashboard', element: <Dashboard /> },
-      { path: 'uploads', element: <UploadReports /> },
-      { path: 'uploads/:upload_id/mapping', element: <MappingReview /> },
-      { path: 'mapping', element: <MappingReview /> },
-      { path: 'reconciliation', element: <ReconciliationWorkspace /> },
-      { path: 'match-review', element: <MatchReview /> },
-      { path: 'discrepancies', element: <Discrepancies /> },
-      { path: 'claims', element: <ClaimsManagement /> },
-      { path: 'analytics', element: <Analytics /> },
-      { path: 'partners', element: <Partners /> },
-      { path: 'users', element: <Users /> },
-      { path: 'settings', element: <Settings /> },
-      { path: 'audit-logs', element: <AuditLogs /> },
+      { path: '/dashboard', element: <Dashboard /> },
+      { path: '/uploads', element: <UploadReports /> },
+      { path: '/uploads/:upload_id/mapping', element: <MappingReview /> },
+      { path: '/mapping', element: <MappingReview /> },
+      { path: '/reconciliation', element: <ReconciliationWorkspace /> },
+      { path: '/match-review', element: <MatchReview /> },
+      { path: '/discrepancies', element: <Discrepancies /> },
+      { path: '/claims', element: <ClaimsManagement /> },
+      { path: '/analytics', element: <Analytics /> },
+      { path: '/partners', element: <Partners /> },
+      { path: '/users', element: <Users /> },
+      { path: '/settings', element: <Settings /> },
+      { path: '/audit-logs', element: <AuditLogs /> },
     ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
   },
 ])

@@ -56,6 +56,16 @@ const config: Config = {
           600: '#0284c7',
           900: '#0c4a6e',
         },
+        ink: {
+          950: '#03040B',
+          900: '#080B18',
+          800: '#0D1120',
+        },
+        electric: {
+          300: '#38BDF8',
+          400: '#168BFF',
+          500: '#2563FF',
+        },
         slate: {
           900: '#0f172a',
           950: '#020617',
@@ -68,6 +78,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'sans-serif'],
+        display: ['Manrope', 'var(--font-sans)', 'sans-serif'],
       },
       keyframes: {
         'accordion-down': {

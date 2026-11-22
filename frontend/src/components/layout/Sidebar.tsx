@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 
 const navItems = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Upload Reports', href: '/uploads', icon: Upload },
   { name: 'Column Mapping', href: '/mapping', icon: ClipboardList },
   { name: 'Reconciliation', href: '/reconciliation', icon: Scale },
@@ -59,7 +59,7 @@ export function Sidebar({
   }, [mobileOpen, isMobile])
 
   const isActive = (href: string) => {
-    if (href === '/') return location.pathname === '/' || location.pathname === '/dashboard'
+    if (href === '/dashboard') return location.pathname === '/dashboard'
     if (href === '/mapping') {
       return location.pathname === '/mapping' || /^\/uploads\/[^/]+\/mapping$/.test(location.pathname)
     }
