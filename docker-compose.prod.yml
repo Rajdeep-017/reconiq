@@ -1,0 +1,141 @@
+# Production-like ReconIQ stack.
+#
+# Usage:
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# The stack is isolated from the development containers by project name and by
+# the configurable host ports in .env.production.
+name: reconiq-prod
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: reconiq-prod-postgres
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reconiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-reconiq}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-reconiq} -d $${POSTGRES_DB:-reconiq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging: *default-logging
+    networks:
+      - reconiq
+
+  redis:
+    image: redis:7-alpine
+    container_name: reconiq-prod-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    logging: *default-logging
+    networks:
+      - reconiq
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: reconiq-prod-backend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      ENV: production
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-reconiq}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:-reconiq}"
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:8080"]}'
+      UPLOAD_DIR: /app/storage/uploads
+      EXPORT_DIR: /app/storage/exports
+      SAMPLE_DATA_DIR: /app/sample_data/data
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - uploads:/app/storage/uploads
+      - exports:/app/storage/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    logging: *default-logging
+    networks:
+      - reconiq
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: reconiq-prod-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging: *default-logging
+    networks:
+      - reconiq
+
+volumes:
+  pgdata:
+    name: reconiq-prod-pgdata
+  redisdata:
+    name: reconiq-prod-redisdata
+  uploads:
+    name: reconiq-prod-uploads
+  exports:
+    name: reconiq-prod-exports
+
+networks:
+  reconiq:
+    name: reconiq-prod-network
+    driver: bridge

@@ -1,0 +1,24 @@
+# The backend image is built from the repository root so sample_data/ can be
+# included for the optional demo seed. Keep the context small.
+.git
+.github
+.vscode
+.idea
+frontend
+backups
+storage
+docs
+reconiq_sample_data
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+**/venv
+**/.env
+**/.env.*
+**/*.log
+.pytest_cache
+README.md
+deployment.md
+docker-compose.yml
+docker-compose.prod.yml
