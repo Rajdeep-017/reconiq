@@ -14,6 +14,9 @@ class Settings(BaseSettings):
         case_sensitive=True,
     )
 
+    # Runtime environment: "dev", "test", "staging", or "production".
+    ENV: str = "dev"
+
     # Database
     DATABASE_URL: str = (
         "postgresql+psycopg://reconiq:reconiq_dev@localhost:5432/reconiq"

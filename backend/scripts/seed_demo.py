@@ -10,8 +10,8 @@ Creates:
 Safe to re-run — existing records (matched by unique fields) are skipped.
 
 Demo passwords are read from DEMO_PASSWORD_FINANCE_EXECUTIVE and
-DEMO_PASSWORD_FINANCE_COFOUNDER env vars. If unset, a random password is
-generated and printed once.
+DEMO_PASSWORD_FINANCE_COFOUNDER env vars. If unset, the development fallback
+passwords below are used and printed.
 """
 
 from __future__ import annotations
@@ -31,9 +31,12 @@ from app.models.organization import Organization
 from app.models.partner import Partner
 from app.models.freight import RateCard
 
-DATA_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "sample_data", "data",
+DATA_DIR = os.environ.get(
+    "SAMPLE_DATA_DIR",
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "sample_data", "data",
+    ),
 )
 
 PARTNERS: list[dict[str, str]] = [

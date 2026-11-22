@@ -24,7 +24,7 @@ _REQUIRED_PROD_VARS = ["DATABASE_URL", "SECRET_KEY"]
 def _startup_checks(app: FastAPI) -> None:
     """Validate critical config on startup."""
     settings = get_settings()
-    env = os.getenv("ENV", "dev")
+    env = settings.ENV
 
     if env != "dev":
         missing = [v for v in _REQUIRED_PROD_VARS if not os.getenv(v)]
@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="ReconIQ",
-        description="AI-Powered D2C Financial Reconciliation Platform",
+        description="Intelligent Financial Reconciliation Platform",
         version=VERSION,
         docs_url="/docs",
         redoc_url="/redoc",
