@@ -19,8 +19,14 @@ export interface TokenResponse {
 }
 
 const env = (import.meta as any).env ?? {}
-const API_BASE_URL =
-  env.VITE_API_BASE_URL || (env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1')
+const configuredApiBaseUrl = env.VITE_API_BASE_URL
+const API_BASE_URL = configuredApiBaseUrl
+  ? /^https?:\/\/[^/]+\/?$/i.test(configuredApiBaseUrl)
+    ? `${configuredApiBaseUrl.replace(/\/+$/, '')}/api/v1`
+    : configuredApiBaseUrl
+  : env.DEV
+    ? 'http://localhost:8000/api/v1'
+    : '/api/v1'
 
 class ApiClient {
   public client: AxiosInstance

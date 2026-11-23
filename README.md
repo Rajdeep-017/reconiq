@@ -193,7 +193,7 @@ Core variables:
 | `ENV` | `dev` | Set to `production` in deployed environments |
 | `DATABASE_URL` | `postgresql+psycopg://reconiq:reconiq_dev@localhost:5432/reconiq` | Use `postgres:5432` inside Compose |
 | `SECRET_KEY` | development placeholder | Must be a strong random value in production |
-| `CORS_ORIGINS` | localhost origins | JSON array of exact browser origins |
+| `CORS_ORIGINS` | localhost and ReconIQ Vercel origins | JSON array of exact browser origins |
 | `REDIS_URL` | `redis://localhost:6379/0` | Use `redis://redis:6379/0` inside Compose |
 | `UPLOAD_DIR` / `EXPORT_DIR` | `../storage/...` | Container paths are `/app/storage/...` |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Nginx allows 55 MB to cover multipart overhead |
@@ -202,10 +202,13 @@ Core variables:
 | `MIGRATION_RETRY_DELAY_SECONDS` | `3` | Delay between migration attempts |
 | `RUN_MIGRATIONS` | `true` | Entrypoint migration switch |
 | `UVICORN_WORKERS` | `2` | API worker count |
-| `VITE_API_BASE_URL` | `/api/v1` in production | Frontend build-time API base |
+| `VITE_API_BASE_URL` | `/api/v1` in production | Frontend build-time API base; use the Render URL plus `/api/v1` when deploying separately |
 
 Provider `postgres://` and `postgresql://` database URLs are automatically
 adapted to the installed psycopg 3 driver.
+For the Vercel frontend and Render API, set `VITE_API_BASE_URL` to
+`https://reconiq-1-vxa0.onrender.com/api/v1` and allow
+`https://reconiq-pasi.vercel.app` in the Render service's `CORS_ORIGINS`.
 
 Generate a production secret with:
 

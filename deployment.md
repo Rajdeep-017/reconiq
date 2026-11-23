@@ -155,10 +155,14 @@ The containers still communicate over the internal network on `postgres:5432` an
 `CORS_ORIGINS` is a JSON array. Include the exact browser origin, including scheme and port:
 
 ```dotenv
-CORS_ORIGINS=["https://app.example.com","https://www.example.com"]
+CORS_ORIGINS=["https://reconiq-pasi.vercel.app"]
 ```
 
-With the bundled Nginx proxy, the browser calls the same origin, so CORS is primarily relevant to direct API clients and separate frontends.
+For the deployed Vercel frontend, set its build-time `VITE_API_BASE_URL` to
+`https://reconiq-1-vxa0.onrender.com/api/v1`. When only the Render service origin
+is provided, the frontend appends `/api/v1` automatically. With the bundled
+Nginx proxy, the browser calls the same origin, so CORS is primarily relevant
+to direct API clients and separately hosted frontends.
 
 ---
 
