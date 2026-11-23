@@ -335,11 +335,11 @@ Key columns: `user_id`, `action`, `entity_type`, `entity_id`, `description`, `ch
 ### Difference semantics
 
 ```text
-difference = expected_amount - actual_amount
+difference = actual_amount - expected_amount
 ```
 
-- Positive: short payment or under-recovery.
-- Negative: excess payment.
+- Negative: short payment or under-recovery.
+- Positive: excess payment.
 - Zero: reconciled within tolerance.
 
 Tolerance and due-date rules are stored in `rule_configs` and snapshotted into `reconciliation_runs.config` for auditability.

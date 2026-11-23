@@ -1,6 +1,8 @@
 """Public landing-page API tests — no auth, no tenant data."""
 from __future__ import annotations
 
+import pytest
+
 
 def test_public_overview_is_unauthenticated_and_internally_consistent(client):
     response = client.get("/api/v1/public/overview")
@@ -19,6 +21,11 @@ def test_public_overview_is_unauthenticated_and_internally_consistent(client):
     assert sum(point["pending"] for point in data["trend"]) == overview["pending_transactions"]
 
     assert sum(point["count"] for point in data["matching_breakdown"]) == overview["total_transactions"]
+
+    settlement = data["settlement"]
+    assert settlement["difference"] == pytest.approx(
+        settlement["actual_amount"] - settlement["expected_amount"]
+    )
 
     discrepancies = data["discrepancies"]
     assert discrepancies["open"] == sum(category["count"] for category in discrepancies["categories"])

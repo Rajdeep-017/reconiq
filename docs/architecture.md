@@ -229,13 +229,13 @@ ReconIQ follows an expected / received / difference model.
 ```text
 Expected = order net amount adjusted by commissions and applicable fees
 Received = actual settlement, remittance, or refund amount
-Difference = Expected - Received
+Difference = Received - Expected
 ```
 
 Interpretation:
 
-- `Difference > 0` - short payment; the seller may be owed money.
-- `Difference < 0` - excess payment; review required.
+- `Difference < 0` - short payment; the seller may be owed money.
+- `Difference > 0` - excess payment; review required.
 - `Difference = 0` - reconciled within tolerance.
 
 Rules:
