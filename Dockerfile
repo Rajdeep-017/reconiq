@@ -23,6 +23,9 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+ENV UPLOAD_DIR=/app/storage/uploads \
+    EXPORT_DIR=/app/storage/exports
+
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
 COPY backend/app ./app

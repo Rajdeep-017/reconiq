@@ -1,9 +1,11 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 
 export interface ApiErrorResponse {
-  status: 'error'
-  detail: string
-  code: string
+  error?: boolean
+  message?: string
+  detail?: string | Array<{ msg?: string }>
+  code?: string
+  details?: Record<string, unknown>
 }
 
 export interface ApiSuccessResponse<T> {
@@ -51,7 +53,11 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError<ApiErrorResponse>) => {
-        if (error.response?.status === 401) {
+        const requestUrl = error.config?.url ?? ''
+        const isAuthenticationAttempt = /\/auth\/(?:login|register)(?:[?#]|$)/.test(
+          requestUrl
+        )
+        if (error.response?.status === 401 && !isAuthenticationAttempt) {
           localStorage.removeItem('reconiq_token')
           localStorage.removeItem('reconiq_user')
           window.location.href = '/login'
@@ -77,7 +83,22 @@ export const api = new ApiClient()
 
 export function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    return error.response?.data?.detail || error.message || 'An unexpected error occurred'
+    const data = error.response?.data
+    if (typeof data?.message === 'string') return data.message
+    if (typeof data?.detail === 'string') return data.detail
+    if (Array.isArray(data?.detail)) {
+      const messages = data.detail
+        .map((issue: { msg?: string }) => issue.msg)
+        .filter(
+          (message: string | undefined): message is string =>
+            typeof message === 'string' && message.length > 0
+        )
+      if (messages.length > 0) return messages.join('; ')
+    }
+    if (error.code === 'ERR_NETWORK') {
+      return 'Unable to reach the server. Check your connection and try again.'
+    }
+    return error.message || 'An unexpected error occurred'
   }
   if (error instanceof Error) {
     return error.message

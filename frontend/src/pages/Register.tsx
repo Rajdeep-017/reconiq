@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useAuth } from '@/hooks/useAuth'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { extractErrorMessage } from '@/lib/api'
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -40,7 +41,7 @@ export function Register() {
       toast.success('Account created. You can now sign in.')
       navigate('/login')
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.detail || 'Registration failed. Please try again.'
+      const msg = extractErrorMessage(err)
       setError(msg)
       toast.error(msg)
     }
