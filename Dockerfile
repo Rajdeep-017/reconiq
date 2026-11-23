@@ -1,12 +1,20 @@
 # ReconIQ backend image.
-# Build from the repository root so the demo seed can include sample_data/.
+#
+# Build from the repository root so the optional demo seed can include
+# sample_data/:
+#
+#   docker build -t reconiq-backend .
+#
+# Render uses the repository root as the Docker context and "Dockerfile" as the
+# Dockerfile path by default, so this file is also the Render entry point.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    HOME=/tmp
+    HOME=/tmp \
+    PORT=8000
 
 WORKDIR /app
 
