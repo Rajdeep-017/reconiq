@@ -6,6 +6,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.core.security import create_access_token
 from app.models.organization import Organization
 from app.models.partner import Partner
@@ -106,7 +107,7 @@ def partner_b(db, org_b):
 def auth_headers_a(user_a):
     token = create_access_token(
         data={"sub": str(user_a.id), "role": user_a.role.value},
-        secret_key="test-secret-key-not-for-production",
+        secret_key=get_settings().SECRET_KEY,
         algorithm="HS256",
     )
     return {"Authorization": f"Bearer {token}"}
@@ -116,7 +117,7 @@ def auth_headers_a(user_a):
 def auth_headers_b(user_b):
     token = create_access_token(
         data={"sub": str(user_b.id), "role": user_b.role.value},
-        secret_key="test-secret-key-not-for-production",
+        secret_key=get_settings().SECRET_KEY,
         algorithm="HS256",
     )
     return {"Authorization": f"Bearer {token}"}

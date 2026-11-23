@@ -1,17 +1,25 @@
 """Application configuration using pydantic-settings."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The backend can be started from the repository root or from backend/. Load
+# the root .env first, then an optional backend/.env for local overrides. Both
+# paths are absent inside the production image, where Compose supplies env vars.
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _BACKEND_DIR.parent
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(_REPO_ROOT / ".env", _BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",
     )
 
     # Runtime environment: "dev", "test", "staging", or "production".
@@ -51,6 +59,19 @@ class Settings(BaseSettings):
     # AI (optional)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
+
+    # Deployment / migrations
+    DATABASE_CONNECT_TIMEOUT: int = 10
+    MIGRATION_CONNECT_ATTEMPTS: int = 10
+    MIGRATION_RETRY_DELAY_SECONDS: float = 3.0
+    RUN_MIGRATIONS: bool = True
+    UVICORN_WORKERS: int = 2
+    FORWARDED_ALLOW_IPS: str = "*"
+
+    # Demo seed (optional; never set for a real customer deployment)
+    SAMPLE_DATA_DIR: str = "sample_data/data"
+    DEMO_PASSWORD_FINANCE_EXECUTIVE: str | None = None
+    DEMO_PASSWORD_FINANCE_COFOUNDER: str | None = None
 
 
 @lru_cache

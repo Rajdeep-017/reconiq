@@ -190,11 +190,12 @@ class TestGetMe:
         """Expired token returns 401."""
         from datetime import timedelta
 
+        from app.config import get_settings
         from app.core.security import create_access_token
 
         token = create_access_token(
             data={"sub": str(test_user.id)},
-            secret_key="test-secret-key-not-for-production",
+            secret_key=get_settings().SECRET_KEY,
             expires_delta=timedelta(seconds=-1),  # Already expired
         )
         response = client.get(

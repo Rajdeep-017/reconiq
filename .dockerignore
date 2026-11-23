@@ -8,7 +8,6 @@ frontend
 backups
 storage
 docs
-reconiq_sample_data
 **/__pycache__
 **/*.py[cod]
 **/.pytest_cache

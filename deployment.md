@@ -70,10 +70,14 @@ node --version
 
 | File | Commit? | Purpose |
 |---|---|---|
-| `.env.example` | Yes | Local backend template |
-| `backend/.env` | No | Local backend values |
+| `.env.example` | Yes | Local development template |
+| `.env` | No | Local development values |
 | `.env.production.example` | Yes | Production Compose template |
 | `.env.production` | No | Deployment secrets and host ports |
+
+The backend loads the repository-root `.env` whether it is started from the
+repository root or from `backend/`; a `backend/.env` override is no longer
+needed.
 
 Create the production file:
 
@@ -172,14 +176,15 @@ docker compose exec redis redis-cli ping
 ### 4.2 Backend
 
 ```powershell
+# From the repository root
+Copy-Item .env.example .env
+
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 
-Copy-Item ..\.env.example .env
 python -m alembic upgrade head
-
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -337,6 +342,60 @@ To pull newer base images:
 docker compose --env-file .env.production -f docker-compose.prod.yml build --pull
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
+
+### 5.6 GitHub Actions CI/CD
+
+`.github/workflows/ci.yml` runs on every push to `main` or a `phase-*` branch,
+on pull requests to `main`, and on manual dispatch:
+
+1. Backend tests (`pytest`) against PostgreSQL 16 and Redis 7 service
+   containers, using the same `DATABASE_URL`/`TEST_DATABASE_URL` shape as local
+   development.
+2. Frontend `npm ci`, `npm run typecheck`, and `npm run build`.
+3. Production Compose validation (`docker compose config`), then Docker builds
+   of `backend/Dockerfile` and `frontend/Dockerfile`.
+
+`.github/workflows/deploy.yml` runs after a successful `CI` run on `main`, or
+manually. It connects to the deployment host over SSH and runs:
+
+```bash
+cd "$DEPLOY_PATH"
+git fetch --prune origin main
+git checkout main
+git pull --ff-only origin main
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+curl -fsS "http://127.0.0.1:${FRONTEND_PORT:-8080}/healthz"
+```
+
+Configure the repository or `production` environment secrets:
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `DEPLOY_HOST` | Yes | SSH host name or IP |
+| `DEPLOY_USER` | Yes | SSH user with Docker access |
+| `DEPLOY_SSH_KEY` | Yes | Private key for the deploy user |
+| `DEPLOY_PATH` | Yes | Absolute repository path on the host |
+| `DEPLOY_PORT` | No | SSH port, default `22` |
+
+Prerequisites on the host:
+
+- The repository is already cloned at `DEPLOY_PATH`.
+- `.env.production` exists and is not overwritten by the pipeline.
+- The deploy user can run `docker compose` without an interactive prompt.
+- The host can reach `origin` over SSH or HTTPS for `git pull`.
+- A firewall or reverse proxy exposes only the frontend port; the direct API,
+  PostgreSQL, and Redis ports remain bound to `127.0.0.1`.
+
+The deploy job deliberately uses `git pull --ff-only`; it fails instead of
+discarding uncommitted server-side changes. Database migrations run from the
+backend container entrypoint after the new image starts. If migrations are
+owned by a separate release job, set `RUN_MIGRATIONS=false` in
+`.env.production` and run `alembic upgrade head` before starting the API.
+
+To skip deployment until a host is ready, leave `DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_SSH_KEY`, or `DEPLOY_PATH` unset. The workflow reports a notice and
+completes without failing.
 
 ---
 
@@ -784,9 +843,8 @@ If more than one head appears, create a merge migration before deploying:
 
 ## 14. Known limitations
 
-- The frontend has no automated test framework or test files in this checkout.
+- The frontend has no automated test framework or test files in this checkout; CI covers type-checking and the production build.
 - `npm run lint` fails because ESLint is not installed or configured, despite the script in `frontend/package.json`.
-- Two pre-existing backend matching tests fail: `test_settlement_late` and `test_cod_statuses`. They are unrelated to the landing page or public endpoint.
 - The frontend production build emits a chunk-size warning because the main bundle is approximately 1.23 MB.
 - The public landing dataset is intentionally demonstration data, not live customer metrics.
 - The local Compose stack serves HTTP. TLS must be terminated by an external proxy or load balancer.

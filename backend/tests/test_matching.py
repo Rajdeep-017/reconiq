@@ -330,11 +330,10 @@ def test_settlement_late(db):
     assert get_result(db, run.id, "ORD-ONTIME").stream_status == "settled"
     late_disc = get_discrepancy(db, run.id, "ORD-LATE", "settled_late")
     assert late_disc is not None
-    late_claim = get_claim(db, run.id, "ORD-LATE")
-    assert late_claim is not None
-    assert late_claim.claim_type == "delay"
-    assert late_claim.claim_amount == Decimal("0.00")
-    assert late_claim.status.value == "draft"
+    # A late settlement with no monetary gap is advisory only. The writer
+    # never creates zero-value claims; reviewers can raise a delay claim
+    # manually from the discrepancy if their process requires one.
+    assert get_claim(db, run.id, "ORD-LATE") is None
 
 
 # --------------------------------------------------------------------------- cod
@@ -382,7 +381,7 @@ def test_cod_statuses(cod_env):
     run = MatchingService(db).execute(cod_env["run"].id)
     db.flush()
 
-    assert run.total_source == 3  # prepaid and non-delivered COD orders excluded
+    assert run.total_source == 4  # all COD orders; prepaid is excluded
     assert run.total_target == 2
 
     missing = get_result(db, run.id, "ORD-COD-MISS")
@@ -398,14 +397,17 @@ def test_cod_statuses(cod_env):
 
     late = get_result(db, run.id, "ORD-COD-LATE")
     assert late.stream_status == "settled_late"
-    late_claim = get_claim(db, run.id, "ORD-COD-LATE")
-    assert late_claim is not None
-    assert late_claim.claim_type == "delay"
-    assert late_claim.claim_amount == Decimal("0.00")
-    assert late_claim.status.value == "draft"
+    # Late but fully remitted: advisory, no zero-value claim.
+    assert get_claim(db, run.id, "ORD-COD-LATE") is None
 
     cancelled = get_result(db, run.id, "ORD-COD-CANCEL")
-    assert cancelled is None
+    assert cancelled is not None
+    assert cancelled.stream_status == "unpaid_past_due"
+    cancelled_disc = get_discrepancy(
+        db, run.id, "ORD-COD-CANCEL", "unpaid_past_due"
+    )
+    assert cancelled_disc is not None
+    # Cash was never collected, so this stays advisory and creates no claim.
     assert get_claim(db, run.id, "ORD-COD-CANCEL") is None
 
     assert get_result(db, run.id, "ORD-PREPAID") is None

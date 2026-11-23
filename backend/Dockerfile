@@ -19,7 +19,7 @@ COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
 COPY backend/app ./app
 COPY backend/scripts ./scripts
-COPY sample_data ./sample_data
+COPY sample_data/data ./sample_data/data
 
 # The container runs as an unprivileged numeric user. The storage directories
 # are created and owned here so fresh named volumes inherit the ownership.

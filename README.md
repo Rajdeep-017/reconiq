@@ -1,5 +1,8 @@
 # ReconIQ
 
+[![CI](https://github.com/Rajdeep-017/reconiq/actions/workflows/ci.yml/badge.svg)](https://github.com/Rajdeep-017/reconiq/actions/workflows/ci.yml)
+[![Deploy](https://github.com/Rajdeep-017/reconiq/actions/workflows/deploy.yml/badge.svg)](https://github.com/Rajdeep-017/reconiq/actions/workflows/deploy.yml)
+
 **Intelligent financial reconciliation for Indian e-commerce.**
 
 ReconIQ brings marketplace settlements, payment gateways, COD remittances, freight invoices, and returns into one reconciliation workspace. It is built for sellers and D2C finance teams that need deterministic calculations, a clear audit trail, and human-controlled approvals.
@@ -105,6 +108,9 @@ docker compose ps
 ### 2. Backend
 
 ```powershell
+# From the repository root, create the local environment file
+Copy-Item .env.example .env
+
 cd backend
 
 # Create and activate the virtualenv
@@ -113,9 +119,6 @@ python -m venv .venv
 
 # Install dependencies
 python -m pip install -r requirements.txt
-
-# Development environment (already present in this checkout)
-Copy-Item ..\.env.example .env
 
 # Apply migrations
 python -m alembic upgrade head
@@ -172,12 +175,16 @@ The Vite dev server proxies `/api` to `http://localhost:8000`. If `VITE_API_BASE
 
 ## Environment configuration
 
-| File | Purpose |
-|---|---|
-| `.env.example` | Local backend development template |
-| `.env.production.example` | Production-like Docker Compose template |
-| `backend/.env` | Local backend values (not committed) |
-| `.env.production` | Deployment secrets and ports (not committed) |
+| File | Commit? | Purpose |
+|---|---|---|
+| `.env.example` | Yes | Local development template |
+| `.env` | No | Local development values |
+| `.env.production.example` | Yes | Production-like Docker Compose template |
+| `.env.production` | No | Deployment secrets and host ports |
+
+The backend reads the repository-root `.env` whether it is started from the
+repository root or from `backend/`. Both local files are git-ignored; only the
+two `.example` templates are committed.
 
 Core variables:
 
@@ -257,8 +264,9 @@ reconiq/
 │   │   └── routes.tsx           # Public and authenticated routes
 │   ├── Dockerfile               # Vite build + Nginx runtime
 │   └── nginx.conf               # SPA fallback and /api reverse proxy
+├── .github/workflows/           # CI and SSH deployment pipelines
 ├── docs/                        # Architecture, database, data-flow docs
-├── sample_data/                 # CSV fixtures used by tests and the demo seed
+├── sample_data/                 # Synthetic CSV fixtures, generator, and demo-seed inputs
 ├── docker-compose.yml           # Local PostgreSQL + Redis
 ├── docker-compose.prod.yml      # Production-like full stack
 ├── .env.example
@@ -282,7 +290,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests/test_public.py -q
 ```
 
-The branch currently has two known pre-existing failures in the matching suite: `test_settlement_late` and `test_cod_statuses`. They are unrelated to the landing page and public endpoint.
+The same commands run in GitHub Actions against PostgreSQL 16 and Redis 7. See [CI/CD](#cicd) for the pipeline details.
 
 ### Frontend
 
@@ -350,6 +358,36 @@ Or use the helper:
 ```
 
 The full production guide, including TLS, backups, rollback, and scaling, is in [deployment.md](deployment.md).
+
+---
+
+## CI/CD
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | Push to `main` or `phase-*`, pull request to `main`, manual dispatch | Runs the backend pytest suite against PostgreSQL 16 and Redis 7, type-checks and builds the frontend, validates the production Compose file, and builds both Docker images |
+| `deploy.yml` | Successful `CI` run on `main`, manual dispatch | Pulls `main` on the deployment host over SSH, rebuilds the production Compose stack, and checks `/healthz` and the public overview endpoint |
+
+### Deployment secrets
+
+Add these under **Settings → Secrets and variables → Actions** (or on the
+`production` environment):
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `DEPLOY_HOST` | Yes | SSH host name or IP |
+| `DEPLOY_USER` | Yes | SSH user that can run Docker |
+| `DEPLOY_SSH_KEY` | Yes | Private key for that user |
+| `DEPLOY_PATH` | Yes | Absolute path to the repository checkout on the host |
+| `DEPLOY_PORT` | No | SSH port, defaults to `22` |
+
+The host must already have the repository checked out at `DEPLOY_PATH`, a
+configured `.env.production`, Docker Engine, and the Compose plugin. The
+deploy job pulls only fast-forward changes and fails visibly instead of
+overwriting local modifications. If any required secret is absent, the job
+skips with a notice instead of failing.
 
 ---
 
