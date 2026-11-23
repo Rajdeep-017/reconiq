@@ -126,7 +126,7 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml config > /dev/null
 
       - name: Build backend image
-        run: docker build -f backend/Dockerfile -t reconiq-backend:ci .
+        run: docker build -f Dockerfile -t reconiq-backend:ci .
 
       - name: Build frontend image
         run: docker build -f frontend/Dockerfile -t reconiq-frontend:ci ./frontend

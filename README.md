@@ -322,7 +322,7 @@ The production build emits a chunk-size warning because the main JavaScript bund
 
 The repository includes a complete production-like stack:
 
-- `backend/Dockerfile` - Python 3.12, migrations on startup, non-root runtime
+- `Dockerfile` - Python 3.12, migrations on startup, non-root runtime
 - `frontend/Dockerfile` - Vite build served by Nginx
 - `frontend/nginx.conf` - SPA fallback, static caching, `/api` proxy
 - `docker-compose.prod.yml` - PostgreSQL, Redis, backend, frontend, health checks, volumes

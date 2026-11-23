@@ -256,7 +256,7 @@ Demo users:
 | File | Purpose |
 |---|---|
 | `docker-compose.prod.yml` | PostgreSQL, Redis, backend, frontend |
-| `backend/Dockerfile` | Backend image |
+| `Dockerfile` | Backend image (build context: repository root) |
 | `backend/docker-entrypoint.sh` | Migrate then start Uvicorn |
 | `frontend/Dockerfile` | Vite build + Nginx runtime |
 | `frontend/nginx.conf` | SPA fallback and `/api` proxy |
@@ -353,7 +353,7 @@ on pull requests to `main`, and on manual dispatch:
    development.
 2. Frontend `npm ci`, `npm run typecheck`, and `npm run build`.
 3. Production Compose validation (`docker compose config`), then Docker builds
-   of `backend/Dockerfile` and `frontend/Dockerfile`.
+   of the root `Dockerfile` and `frontend/Dockerfile`.
 
 `.github/workflows/deploy.yml` runs after a successful `CI` run on `main`, or
 manually. It connects to the deployment host over SSH and runs:
