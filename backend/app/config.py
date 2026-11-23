@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The backend can be started from the repository root or from backend/. Load
@@ -14,6 +15,15 @@ _REPO_ROOT = _BACKEND_DIR.parent
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
+
+    @field_validator("DATABASE_URL", "TEST_DATABASE_URL", mode="before")
+    @classmethod
+    def use_psycopg_driver(cls, value: str) -> str:
+        """Use the installed psycopg 3 driver for provider PostgreSQL URLs."""
+        for scheme in ("postgres://", "postgresql://"):
+            if value.startswith(scheme):
+                return f"postgresql+psycopg://{value[len(scheme):]}"
+        return value
 
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", _BACKEND_DIR / ".env"),

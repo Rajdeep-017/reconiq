@@ -15,7 +15,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, make_url, text
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -24,6 +24,20 @@ def _alembic_config() -> Config:
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     return cfg
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgres://user:pass@db.example/reconiq",
+        "postgresql://user:pass@db.example/reconiq",
+    ],
+)
+def test_provider_database_urls_use_psycopg_driver(url):
+    settings = Settings(DATABASE_URL=url, TEST_DATABASE_URL=url)
+
+    assert settings.DATABASE_URL == "postgresql+psycopg://user:pass@db.example/reconiq"
+    assert settings.TEST_DATABASE_URL == settings.DATABASE_URL
 
 
 @pytest.fixture()

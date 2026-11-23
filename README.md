@@ -204,6 +204,9 @@ Core variables:
 | `UVICORN_WORKERS` | `2` | API worker count |
 | `VITE_API_BASE_URL` | `/api/v1` in production | Frontend build-time API base |
 
+Provider `postgres://` and `postgresql://` database URLs are automatically
+adapted to the installed psycopg 3 driver.
+
 Generate a production secret with:
 
 ```powershell
